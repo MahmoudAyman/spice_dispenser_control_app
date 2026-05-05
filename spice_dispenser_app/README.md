@@ -1,3 +1,4 @@
+## STAGING
 Spice Dispenser Mobile App
 
 Android-optimized Flutter application designed to control an ESP32-powered spice dispensing machine via Bluetooth Low Energy (BLE).
