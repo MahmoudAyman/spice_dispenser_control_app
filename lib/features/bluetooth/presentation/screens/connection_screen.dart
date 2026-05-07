@@ -20,8 +20,10 @@ class ConnectionScreen extends StatelessWidget {
           BluetoothCubit,
           BluetoothState>(
         listener: (context, state) {
+
           if (state
           is BluetoothHandshakeSuccess) {
+
             Navigator.pushReplacement(
               context,
               MaterialPageRoute(
@@ -33,45 +35,265 @@ class ConnectionScreen extends StatelessWidget {
 
           if (state
           is BluetoothHandshakeFailed) {
+
             ScaffoldMessenger.of(context)
                 .showSnackBar(
               const SnackBar(
                 content: Text(
-                  'Handshake Failed',
+                  'Authentication Failed',
                 ),
               ),
             );
           }
         },
         child: Scaffold(
-          appBar: AppBar(
-            title:
-            const Text('Spice Dispenser'),
-          ),
-          body: Padding(
-            padding: const EdgeInsets.all(16),
+          backgroundColor:
+          const Color(0xFFF1F5F9),
+          body: SafeArea(
             child: Column(
               children: [
-                SizedBox(
+
+                /// HEADER
+                Container(
                   width: double.infinity,
-                  height: 55,
-                  child: ElevatedButton(
-                    onPressed: () {
-                      context
-                          .read<BluetoothCubit>()
-                          .scanDevices();
-                    },
-                    child: const Text('Scan'),
+                  padding: const EdgeInsets.only(
+                    left: 24,
+                    right: 24,
+                    top: 24,
+                    bottom: 30,
+                  ),
+                  decoration: const BoxDecoration(
+                    color: Color(0xFF2563EB),
+                  ),
+                  child: const Column(
+                    crossAxisAlignment:
+                    CrossAxisAlignment.start,
+                    children: [
+
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+
+                          Icon(
+                            Icons.bluetooth,
+                            color: Colors.white,
+                          ),
+
+                          SizedBox(width: 12),
+
+                          Text(
+                            'Spice Dispenser',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 32,
+                              fontWeight:
+                              FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+
+                      SizedBox(height: 10),
+
+                      Center(
+                        child: Text(
+                          'Connect to your device',
+                          style: TextStyle(
+                            color: Colors.white70,
+                            fontSize: 16,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
-                const SizedBox(height: 24),
+
+                /// SCAN BAR
+                Container(
+                  color: Colors.white,
+                  padding:
+                  const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+
+                      const Icon(
+                        Icons.bluetooth,
+                        color: Colors.grey,
+                      ),
+
+                      const SizedBox(width: 10),
+
+                      Expanded(
+                        child: BlocBuilder<
+                            BluetoothCubit,
+                            BluetoothState>(
+                          builder: (context, state) {
+
+                            if (state
+                            is BluetoothLoading) {
+
+                              return const Text(
+                                'Scanning...',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight:
+                                  FontWeight
+                                      .w500,
+                                ),
+                              );
+                            }
+
+                            if (state
+                            is BluetoothConnecting) {
+
+                              return const Text(
+                                'Authenticating...',
+                                style: TextStyle(
+                                  fontSize: 16,
+                                  fontWeight:
+                                  FontWeight
+                                      .w500,
+                                ),
+                              );
+                            }
+
+                            return const Text(
+                              'Ready to scan',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight:
+                                FontWeight.w500,
+                              ),
+                            );
+                          },
+                        ),
+                      ),
+
+                      BlocBuilder<
+                          BluetoothCubit,
+                          BluetoothState>(
+                        builder: (context, state) {
+
+                          final isScanning =
+                          state
+                          is BluetoothLoading;
+
+                          return SizedBox(
+                            height: 50,
+                            child: ElevatedButton(
+
+                              style:
+                              ElevatedButton
+                                  .styleFrom(
+                                backgroundColor:
+                                isScanning
+                                    ? Colors
+                                    .grey
+                                    : const Color(
+                                  0xFF2563EB,
+                                ),
+
+                                shape:
+                                RoundedRectangleBorder(
+                                  borderRadius:
+                                  BorderRadius
+                                      .circular(
+                                    12,
+                                  ),
+                                ),
+                              ),
+
+                              onPressed:
+                              isScanning
+                                  ? null
+                                  : () {
+
+                                context
+                                    .read<
+                                    BluetoothCubit>()
+                                    .scanDevices();
+                              },
+
+                              child: Row(
+                                mainAxisSize:
+                                MainAxisSize.min,
+                                children: [
+
+                                  if (isScanning)
+                                    const SizedBox(
+                                      width: 18,
+                                      height: 18,
+                                      child:
+                                      CircularProgressIndicator(
+                                        strokeWidth:
+                                        2,
+                                        color: Colors
+                                            .white,
+                                      ),
+                                    ),
+
+                                  if (isScanning)
+                                    const SizedBox(
+                                      width: 10,
+                                    ),
+
+                                  Text(
+                                    isScanning
+                                        ? 'Scanning...'
+                                        : 'Scan',
+
+                                    style:
+                                    const TextStyle(
+                                      color:
+                                      Colors.white,
+                                      fontWeight:
+                                      FontWeight
+                                          .bold,
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          );
+                        },
+                      ),
+                    ],
+                  ),
+                ),
+
+                /// TITLE
+                const Padding(
+                  padding: EdgeInsets.only(
+                    top: 24,
+                    left: 20,
+                    right: 20,
+                    bottom: 12,
+                  ),
+                  child: Row(
+                    children: [
+
+                      Text(
+                        'Available Devices',
+                        style: TextStyle(
+                          fontSize: 30,
+                          fontWeight:
+                          FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+
+                /// DEVICES LIST
                 Expanded(
                   child: BlocBuilder<
                       BluetoothCubit,
                       BluetoothState>(
                     builder: (context, state) {
+
                       if (state
                       is BluetoothLoading) {
+
                         return const Center(
                           child:
                           CircularProgressIndicator(),
@@ -80,15 +302,27 @@ class ConnectionScreen extends StatelessWidget {
 
                       if (state
                       is BluetoothConnecting) {
+
                         return const Center(
                           child: Column(
                             mainAxisAlignment:
                             MainAxisAlignment
                                 .center,
                             children: [
+
                               CircularProgressIndicator(),
-                              SizedBox(height: 16),
-                              Text('Connecting...'),
+
+                              SizedBox(height: 20),
+
+                              Text(
+                                'Authenticating Device...',
+                                style: TextStyle(
+                                  fontSize: 18,
+                                  fontWeight:
+                                  FontWeight
+                                      .w600,
+                                ),
+                              ),
                             ],
                           ),
                         );
@@ -96,20 +330,43 @@ class ConnectionScreen extends StatelessWidget {
 
                       if (state
                       is BluetoothLoaded) {
+
+                        if (state
+                            .devices.isEmpty) {
+
+                          return const Center(
+                            child: Text(
+                              'No Devices Found',
+                            ),
+                          );
+                        }
+
                         return ListView.builder(
+                          padding:
+                          const EdgeInsets
+                              .symmetric(
+                            horizontal: 20,
+                          ),
+
                           itemCount:
                           state.devices.length,
+
                           itemBuilder:
                               (context, index) {
+
                             return DeviceCard(
                               device:
-                              state.devices[index],
+                              state.devices[
+                              index],
+
                               onTap: () {
+
                                 context
                                     .read<
                                     BluetoothCubit>()
                                     .connectToDevice(
-                                  state.devices[index],
+                                  state.devices[
+                                  index],
                                 );
                               },
                             );
@@ -119,18 +376,36 @@ class ConnectionScreen extends StatelessWidget {
 
                       if (state
                       is BluetoothError) {
+
                         return Center(
                           child:
                           Text(state.message),
                         );
                       }
 
-                      return const Center(
-                        child: Text(
-                          'Ready to scan',
-                        ),
-                      );
+                      return const SizedBox();
                     },
+                  ),
+                ),
+
+                /// FOOTER
+                Container(
+                  width: double.infinity,
+
+                  padding:
+                  const EdgeInsets.all(20),
+
+                  color: Colors.white,
+
+                  child: const Text(
+                    'Make sure your Spice Dispenser is powered on and within range',
+
+                    textAlign: TextAlign.center,
+
+                    style: TextStyle(
+                      color: Colors.grey,
+                      fontSize: 14,
+                    ),
                   ),
                 ),
               ],
