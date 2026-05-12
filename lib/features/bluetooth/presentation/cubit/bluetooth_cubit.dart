@@ -3,6 +3,8 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../../core/services/ble_service.dart';
 import '../../data/models/ble_device_model.dart';
 import 'bluetooth_state.dart';
+import '../../../../../core/storage/storage_service.dart';
+import '../../data/models/last_connected_machine_model.dart';
 
 class BluetoothCubit extends Cubit<BluetoothState> {
   final BleService bleService;
@@ -49,6 +51,18 @@ class BluetoothCubit extends Cubit<BluetoothState> {
       );
 
       if (success) {
+
+        await StorageService
+            .saveLastMachine(
+          LastConnectedMachineModel(
+            deviceId:
+            bleDevice.device.remoteId.str,
+
+            deviceName:
+            bleDevice.name,
+          ),
+        );
+
         emit(BluetoothHandshakeSuccess());
       } else {
         emit(BluetoothHandshakeFailed());

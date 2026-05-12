@@ -6,6 +6,8 @@ import '../../../dashboard/presentation/screens/dashboard_screen.dart';
 import '../cubit/bluetooth_cubit.dart';
 import '../cubit/bluetooth_state.dart';
 import '../widgets/device_card.dart';
+import '../../../../../core/services/uuid_service.dart';
+import '../../../../../core/storage/storage_service.dart';
 
 class ConnectionScreen extends StatelessWidget {
   const ConnectionScreen({super.key});
@@ -206,11 +208,22 @@ class ConnectionScreen extends StatelessWidget {
                               onPressed:
                               isScanning
                                   ? null
-                                  : () {
+                                  : () async {
+
+                                final uuid =
+                                    await UuidService.getUuid();
+
+                                print('USER UUID: $uuid');
+
+                                final lastMachine =
+                                StorageService.getLastMachine();
+
+                                print(
+                                  'LAST MACHINE: ${lastMachine?.deviceName}',
+                                );
 
                                 context
-                                    .read<
-                                    BluetoothCubit>()
+                                    .read<BluetoothCubit>()
                                     .scanDevices();
                               },
 
