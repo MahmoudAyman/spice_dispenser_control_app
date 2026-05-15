@@ -4,36 +4,57 @@ import 'dart:convert';
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../constants/ble_constants.dart';
-import 'uuid_service.dart';
+import '../protocol/commands/handshake_command.dart';
+import '../protocol/protocol_service.dart';
+import '../protocol/responses/ack_response.dart';
 
 class BleService {
 
-  Future<List<ScanResult>> scanDevices() async {
+  final ProtocolService
+  protocolService =
+  ProtocolService();
+
+  BluetoothCharacteristic?
+  writeCharacteristic;
+
+  BluetoothCharacteristic?
+  notifyCharacteristic;
+
+  BluetoothDevice?
+  connectedDevice;
+
+  /// SCAN DEVICES
+  Future<List<ScanResult>>
+  scanDevices() async {
 
     final Map<String, ScanResult>
     uniqueDevices = {};
 
     await FlutterBluePlus.startScan(
-      timeout: const Duration(seconds: 4),
+      timeout:
+      const Duration(seconds: 4),
     );
 
-    FlutterBluePlus.scanResults.listen((results) {
+    FlutterBluePlus.scanResults.listen(
+          (results) {
 
-      for (var result in results) {
+        for (var result in results) {
 
-        final name = result.device.platformName
-            .toLowerCase();
+          final name =
+          result.device.platformName
+              .toLowerCase();
 
-        if (name.contains(
-          BleConstants.deviceName,
-        )) {
+          if (name.contains(
+            BleConstants.deviceName,
+          )) {
 
-          uniqueDevices[
-          result.device.remoteId.str] =
-              result;
+            uniqueDevices[
+            result.device.remoteId.str] =
+                result;
+          }
         }
-      }
-    });
+      },
+    );
 
     await Future.delayed(
       const Duration(seconds: 4),
@@ -41,36 +62,35 @@ class BleService {
 
     await FlutterBluePlus.stopScan();
 
-    return uniqueDevices.values.toList();
+    return uniqueDevices.values
+        .toList();
   }
 
+  /// CONNECT DEVICE
   Future<void> connectToDevice(
       BluetoothDevice device,
       ) async {
 
+    connectedDevice = device;
+
     await device.connect();
 
-    device.connectionState.listen((state) {
+    device.connectionState.listen(
+          (state) {
 
-      if (state ==
-          BluetoothConnectionState
-              .disconnected) {
+        if (state ==
+            BluetoothConnectionState
+                .disconnected) {
 
-        print('Device disconnected');
-      }
-    });
-  }
-
-  Future<bool> sendHandshake(
-      BluetoothDevice device,
-      ) async {
+          print(
+            'Device disconnected',
+          );
+        }
+      },
+    );
 
     final services =
     await device.discoverServices();
-
-    BluetoothCharacteristic? writeChar;
-
-    BluetoothCharacteristic? notifyChar;
 
     for (var service in services) {
 
@@ -80,71 +100,117 @@ class BleService {
         for (var characteristic
         in service.characteristics) {
 
-          if (characteristic.uuid.toString() ==
+          /// WRITE
+          if (characteristic.uuid
+              .toString() ==
               BleConstants
                   .writeCharacteristicUuid) {
 
-            writeChar = characteristic;
+            writeCharacteristic =
+                characteristic;
           }
 
-          if (characteristic.uuid.toString() ==
+          /// NOTIFY
+          if (characteristic.uuid
+              .toString() ==
               BleConstants
                   .notifyCharacteristicUuid) {
 
-            notifyChar = characteristic;
+            notifyCharacteristic =
+                characteristic;
           }
         }
       }
     }
 
-    if (writeChar == null ||
-        notifyChar == null) {
+    /// START NOTIFICATIONS
+    if (notifyCharacteristic != null) {
+
+      await protocolService
+          .startListening(
+        notifyCharacteristic!,
+      );
+    }
+  }
+
+  /// HANDSHAKE
+  Future<bool> sendHandshake({
+    required String uuid,
+  }) async {
+
+    if (writeCharacteristic ==
+        null) {
 
       return false;
     }
 
-    await notifyChar.setNotifyValue(true);
-
-    final uuid =
-    await UuidService.getUuid();
-
-    final handshake = {
-      'type': 'handshake',
-      'uuid': uuid,
-      'version': 1,
-    };
-
-    final completer = Completer<bool>();
-
-    notifyChar.onValueReceived.listen((value) {
-
-      final decoded = jsonDecode(
-        utf8.decode(value),
-      );
-
-      if (decoded['type'] == 'ack' &&
-          decoded['status'] == 'success') {
-
-        completer.complete(true);
-      }
-    });
-
-    await writeChar.write(
-      utf8.encode(
-        jsonEncode(handshake),
-      ),
+    final command =
+    HandshakeCommand(
+      uuid: uuid,
+      version: 1,
     );
 
-    return completer.future.timeout(
-      const Duration(seconds: 3),
-      onTimeout: () => false,
+    try {
+
+      final AckResponse ack =
+      await protocolService
+          .sendCommand(
+        writeCharacteristic:
+        writeCharacteristic!,
+
+        command:
+        command.toJson(),
+      );
+
+      return ack.isSuccess;
+
+    } catch (e) {
+
+      print(
+        'Handshake Error: $e',
+      );
+
+      return false;
+    }
+  }
+
+  /// SEND RAW COMMAND
+  Future<AckResponse> sendCommand({
+    required Map<String, dynamic>
+    command,
+  }) async {
+
+    if (writeCharacteristic ==
+        null) {
+
+      throw Exception(
+        'Write characteristic is null',
+      );
+    }
+
+    return await protocolService
+        .sendCommand(
+      writeCharacteristic:
+      writeCharacteristic!,
+
+      command: command,
     );
   }
 
-  Future<void> disconnectDevice(
-      BluetoothDevice device,
-      ) async {
+  /// DISCONNECT
+  Future<void> disconnectDevice()
+  async {
 
-    await device.disconnect();
+    if (connectedDevice != null) {
+
+      await connectedDevice!
+          .disconnect();
+    }
+  }
+
+  /// DISPOSE
+  void dispose() {
+
+    protocolService.dispose();
   }
 }

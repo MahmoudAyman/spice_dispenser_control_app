@@ -1,7 +1,8 @@
 import 'package:flutter/material.dart';
 
-import 'app.dart';
 import 'core/storage/storage_service.dart';
+
+import 'features/bluetooth/presentation/screens/connection_screen.dart';
 
 void main() async {
 
@@ -11,6 +12,23 @@ void main() async {
   await StorageService.init();
 
   runApp(
-    const SpiceDispenserApp(),
+    const MyApp(),
   );
+}
+
+class MyApp
+    extends StatelessWidget {
+
+  const MyApp({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+
+    return const MaterialApp(
+      debugShowCheckedModeBanner:
+      false,
+
+      home: ConnectionScreen(),
+    );
+  }
 }

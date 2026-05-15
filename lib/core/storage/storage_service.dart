@@ -1,6 +1,7 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../features/bluetooth/data/models/last_connected_machine_model.dart';
+import '../services/hash_service.dart';
 import 'storage_keys.dart';
 
 class StorageService {
@@ -12,10 +13,41 @@ class StorageService {
     await Hive.openBox(
       StorageKeys.userBox,
     );
+
+    await Hive.openBox(
+      StorageKeys.recipesBox,
+    );
+
+    await Hive.openBox(
+      StorageKeys.slotsBox,
+    );
+
+    await Hive.openBox(
+      StorageKeys.machineBox,
+    );
   }
 
-  static Box get _box =>
-      Hive.box(StorageKeys.userBox);
+  /// BOXES
+
+  static Box get userBox =>
+      Hive.box(
+        StorageKeys.userBox,
+      );
+
+  static Box get recipesBox =>
+      Hive.box(
+        StorageKeys.recipesBox,
+      );
+
+  static Box get slotsBox =>
+      Hive.box(
+        StorageKeys.slotsBox,
+      );
+
+  static Box get machineBox =>
+      Hive.box(
+        StorageKeys.machineBox,
+      );
 
   /// UUID
 
@@ -23,7 +55,7 @@ class StorageService {
       String uuid,
       ) async {
 
-    await _box.put(
+    await userBox.put(
       StorageKeys.userUuid,
       uuid,
     );
@@ -31,7 +63,7 @@ class StorageService {
 
   static String? getUuid() {
 
-    return _box.get(
+    return userBox.get(
       StorageKeys.userUuid,
     );
   }
@@ -42,7 +74,7 @@ class StorageService {
       LastConnectedMachineModel machine,
       ) async {
 
-    await _box.put(
+    await userBox.put(
       StorageKeys.lastMachine,
       machine.toMap(),
     );
@@ -51,7 +83,8 @@ class StorageService {
   static LastConnectedMachineModel?
   getLastMachine() {
 
-    final data = _box.get(
+    final data =
+    userBox.get(
       StorageKeys.lastMachine,
     );
 
@@ -63,9 +96,133 @@ class StorageService {
         .fromMap(data);
   }
 
-  static Future<void> clearStorage()
-  async {
+  /// MACHINE INITIALIZED
 
-    await _box.clear();
+  static Future<void>
+  setInitialized(
+      bool value,
+      ) async {
+
+    await machineBox.put(
+      StorageKeys.initialized,
+      value,
+    );
+  }
+
+  static bool isInitialized() {
+
+    return machineBox.get(
+      StorageKeys.initialized,
+    ) ??
+        false;
+  }
+
+  /// MACHINE HASH
+
+  static Future<void>
+  saveMachineHash(
+      String hash,
+      ) async {
+
+    await machineBox.put(
+      StorageKeys.machineHash,
+      hash,
+    );
+  }
+
+  static String? getMachineHash() {
+
+    return machineBox.get(
+      StorageKeys.machineHash,
+    );
+  }
+
+  /// APP VERSION
+
+  static const String
+  appVersionKey =
+      'app_version';
+
+  static Future<void>
+  saveAppVersion(
+      int version,
+      ) async {
+
+    await machineBox.put(
+      appVersionKey,
+      version,
+    );
+  }
+
+  static int getAppVersion() {
+
+    return machineBox.get(
+      appVersionKey,
+      defaultValue: 1,
+    );
+  }
+
+  /// RECIPES HASH
+
+  static Future<void>
+  saveRecipesHash(
+      List recipes,
+      ) async {
+
+    final hash =
+    HashService.generateHash(
+      recipes.toString(),
+    );
+
+    await machineBox.put(
+      'recipes_hash',
+      hash,
+    );
+  }
+
+  static String? getRecipesHash() {
+
+    return machineBox.get(
+      'recipes_hash',
+    );
+  }
+
+  /// SLOTS HASH
+
+  static Future<void>
+  saveSlotsHash(
+      List slots,
+      ) async {
+
+    final hash =
+    HashService.generateHash(
+      slots.toString(),
+    );
+
+    await machineBox.put(
+      'slots_hash',
+      hash,
+    );
+  }
+
+  static String? getSlotsHash() {
+
+    return machineBox.get(
+      'slots_hash',
+    );
+  }
+
+  /// CLEAR STORAGE
+
+  static Future<void>
+  clearStorage() async {
+
+    await userBox.clear();
+
+    await recipesBox.clear();
+
+    await slotsBox.clear();
+
+    await machineBox.clear();
   }
 }
