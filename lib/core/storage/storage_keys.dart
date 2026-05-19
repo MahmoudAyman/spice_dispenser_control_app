@@ -21,6 +21,9 @@ class StorageKeys {
   static const String slotsBox =
       'slots_box';
 
+  static const String savedSlots =
+      'saved_slots';
+
   /// Machine
 
   static const String machineBox =

@@ -1,177 +1,204 @@
 import 'dart:async';
+
 import 'dart:convert';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
-import 'package:spice_dispenser_app/core/protocol/responses/status_response.dart';
 
 import 'packet_manager.dart';
+
 import 'protocol_parser.dart';
 
 import 'responses/ack_response.dart';
+
+import 'responses/status_response.dart';
+
 import 'responses/alert_response.dart';
+
 import 'responses/levels_response.dart';
-import 'responses/machine_state_response.dart';
-import 'responses/message_type.dart';
 
 class ProtocolService {
 
-  StreamSubscription<List<int>>?
-  _notificationSubscription;
+  /// ACK STREAM
 
-  Completer<AckResponse>?
-  _ackCompleter;
+  final StreamController<AckResponse>
+  ackController =
+  StreamController.broadcast();
 
-  /// STREAM CONTROLLERS
+  /// STATUS STREAM
 
-  final StreamController<
-      StatusResponse>
+  final StreamController<StatusResponse>
   statusController =
   StreamController.broadcast();
 
-  final StreamController<
-      LevelsResponse>
-  levelsController =
-  StreamController.broadcast();
+  /// ALERT STREAM
 
-  final StreamController<
-      AlertResponse>
+  final StreamController<AlertResponse>
   alertController =
   StreamController.broadcast();
 
-  final StreamController<
-      MachineStateResponse>
-  machineStateController =
+  /// LEVELS STREAM
+
+  final StreamController<LevelsResponse>
+  levelsController =
   StreamController.broadcast();
 
-  /// START LISTENING
+  /// MACHINE VERSION
 
-  Future<void> startListening(
+  int machineVersion = 1;
+
+  /// MACHINE INITIALIZED
+
+  bool machineInitialized = false;
+
+  /// STATUS LISTENER
+
+  Future<void> startStatusListening(
       BluetoothCharacteristic
-      notifyCharacteristic,
+      characteristic,
       ) async {
 
-    await notifyCharacteristic
+    await characteristic
         .setNotifyValue(true);
 
-    _notificationSubscription =
-        notifyCharacteristic
-            .onValueReceived
-            .listen(
-              (value) {
+    characteristic.lastValueStream
+        .listen(
+          (value) {
 
-            try {
+        if (value.isEmpty) {
+          return;
+        }
 
-              final jsonString =
-              PacketManager
-                  .mergePackets(
-                value,
-              );
+        try {
 
-              final jsonData =
-              jsonDecode(
-                jsonString,
-              );
+          final jsonString =
+          PacketManager.mergePackets(
+            value,
+          );
 
-              final type =
-              ProtocolParser
-                  .parseType(
-                jsonData['type'],
-              );
+          print(
+            'RAW STATUS RESPONSE: $jsonString',
+          );
 
-              switch (type) {
+          final data =
+          jsonDecode(
+            jsonString,
+          );
 
-              /// ACK
-                case MessageType.ack:
+          print(
+            'PARSED STATUS RESPONSE: $data',
+          );
 
-                  final ack =
-                  AckResponse
-                      .fromJson(
-                    jsonData,
-                  );
+          final parsed =
+          ProtocolParser.parse(
+            data,
+          );
 
-                  _ackCompleter
-                      ?.complete(
-                    ack,
-                  );
+          /// ACK
 
-                  break;
+          if (parsed
+          is AckResponse) {
 
-              /// STATUS
-                case MessageType.status:
+            ackController.add(
+              parsed,
+            );
+          }
 
-                  final status =
-                  StatusResponse
-                      .fromJson(
-                    jsonData,
-                  );
+          /// STATUS
 
-                  statusController
-                      .add(
-                    status,
-                  );
+          else if (parsed
+          is StatusResponse) {
 
-                  break;
+            machineVersion =
+                data['version'] ?? 1;
 
-              /// LEVELS
-                case MessageType.levels:
+            machineInitialized =
+                data['initialized']
+                    ?? false;
 
-                  final levels =
-                  LevelsResponse
-                      .fromJson(
-                    jsonData,
-                  );
+            statusController.add(
+              parsed,
+            );
+          }
 
-                  levelsController
-                      .add(
-                    levels,
-                  );
+          /// ALERT
 
-                  break;
+          else if (parsed
+          is AlertResponse) {
 
-              /// ALERT
-                case MessageType.alert:
+            alertController.add(
+              parsed,
+            );
+          }
 
-                  final alert =
-                  AlertResponse
-                      .fromJson(
-                    jsonData,
-                  );
+        } catch (e) {
 
-                  alertController
-                      .add(
-                    alert,
-                  );
+          print(
+            'STATUS PARSE ERROR: $e',
+          );
+        }
+      },
+    );
+  }
 
-                  break;
+  /// SYNC LISTENER
 
-              /// MACHINE STATE
-                case MessageType.machineState:
+  Future<void> startSyncListening(
+      BluetoothCharacteristic
+      characteristic,
+      ) async {
 
-                  final state =
-                  MachineStateResponse
-                      .fromJson(
-                    jsonData,
-                  );
+    await characteristic
+        .setNotifyValue(true);
 
-                  machineStateController
-                      .add(
-                    state,
-                  );
+    characteristic.lastValueStream
+        .listen(
+          (value) {
 
-                  break;
+        if (value.isEmpty) {
+          return;
+        }
 
-                default:
-                  break;
-              }
+        try {
 
-            } catch (e) {
+          final jsonString =
+          PacketManager.mergePackets(
+            value,
+          );
 
-              print(
-                'Protocol Parse Error: $e',
-              );
-            }
-          },
-        );
+          print(
+            'RAW SYNC RESPONSE: $jsonString',
+          );
+
+          final data =
+          jsonDecode(
+            jsonString,
+          );
+
+          print(
+            'PARSED SYNC RESPONSE: $data',
+          );
+
+          final parsed =
+          ProtocolParser.parse(
+            data,
+          );
+
+          if (parsed
+          is LevelsResponse) {
+
+            levelsController.add(
+              parsed,
+            );
+          }
+
+        } catch (e) {
+
+          print(
+            'SYNC PARSE ERROR: $e',
+          );
+        }
+      },
+    );
   }
 
   /// SEND COMMAND
@@ -183,36 +210,68 @@ class ProtocolService {
 
     required Map<String, dynamic>
     command,
-
   }) async {
 
     final jsonString =
     jsonEncode(command);
 
+    print(
+      'SENDING COMMAND: $jsonString',
+    );
+
     final packets =
-    PacketManager
-        .splitPacket(
+    PacketManager.splitPacket(
       jsonString,
     );
 
-    _ackCompleter =
-        Completer<AckResponse>();
+    final completer =
+    Completer<AckResponse>();
 
-    for (final packet in packets) {
+    late StreamSubscription sub;
+
+    sub = ackController.stream.listen(
+          (ack) {
+
+        print(
+          'ACK RECEIVED: ${ack.status}',
+        );
+
+        if (!completer
+            .isCompleted) {
+
+          completer.complete(
+            ack,
+          );
+        }
+
+        sub.cancel();
+      },
+    );
+
+    for (List<int> packet
+    in packets) {
+
+      print(
+        'SENDING PACKET: $packet',
+      );
 
       await writeCharacteristic
           .write(
         packet,
+
         withoutResponse: false,
       );
     }
 
-    return _ackCompleter!
-        .future
-        .timeout(
-      const Duration(
-        seconds: 3,
-      ),
+    return completer.future.timeout(
+      const Duration(seconds: 3),
+
+      onTimeout: () {
+
+        throw Exception(
+          'ACK Timeout',
+        );
+      },
     );
   }
 
@@ -220,16 +279,12 @@ class ProtocolService {
 
   void dispose() {
 
-    _notificationSubscription
-        ?.cancel();
+    ackController.close();
 
     statusController.close();
 
-    levelsController.close();
-
     alertController.close();
 
-    machineStateController
-        .close();
+    levelsController.close();
   }
 }

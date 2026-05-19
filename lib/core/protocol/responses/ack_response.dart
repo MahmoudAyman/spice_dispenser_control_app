@@ -1,27 +1,29 @@
 class AckResponse {
 
-  final bool success;
+  final String command;
 
-  final String message;
+  final String status;
 
   AckResponse({
-    required this.success,
-    required this.message,
+    required this.command,
+    required this.status,
   });
 
-  bool get isSuccess =>
-      success;
+  bool get isSuccess {
+
+    return status.toLowerCase() == 'success';
+  }
 
   factory AckResponse.fromJson(
       Map<String, dynamic> json,
       ) {
 
     return AckResponse(
-      success:
-      json['success'],
+      command:
+      json['command'] ?? '',
 
-      message:
-      json['message'],
+      status:
+      json['status'] ?? 'failed',
     );
   }
 }

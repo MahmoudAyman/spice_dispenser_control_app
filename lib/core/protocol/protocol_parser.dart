@@ -1,30 +1,49 @@
-import 'responses/message_type.dart';
+import 'responses/ack_response.dart';
+
+import 'responses/alert_response.dart';
+
+import 'responses/levels_response.dart';
+
+import 'responses/status_response.dart';
 
 class ProtocolParser {
 
-  static MessageType parseType(
-      String type,
+  static dynamic parse(
+      Map<String, dynamic> json,
       ) {
+
+    final type =
+    json['type'];
 
     switch (type) {
 
       case 'ack':
-        return MessageType.ack;
+
+        return AckResponse.fromJson(
+          json,
+        );
 
       case 'status':
-        return MessageType.status;
+
+        return StatusResponse.fromJson(
+          json,
+        );
 
       case 'levels':
-        return MessageType.levels;
+
+        return LevelsResponse.fromJson(
+          json,
+        );
 
       case 'alert':
-        return MessageType.alert;
 
-      case 'machine_state':
-        return MessageType.machineState;
+        return AlertResponse.fromJson(
+          json,
+        );
 
       default:
-        return MessageType.unknown;
+
+        return null;
     }
   }
 }

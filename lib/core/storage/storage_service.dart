@@ -1,6 +1,8 @@
 import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../features/bluetooth/data/models/last_connected_machine_model.dart';
+import '../../features/container_management/data/models/slot_model.dart';
+
 import '../services/hash_service.dart';
 import 'storage_keys.dart';
 
@@ -93,7 +95,9 @@ class StorageService {
     }
 
     return LastConnectedMachineModel
-        .fromMap(data);
+        .fromMap(
+      Map<String, dynamic>.from(data),
+    );
   }
 
   /// MACHINE INITIALIZED
@@ -209,6 +213,47 @@ class StorageService {
 
     return machineBox.get(
       'slots_hash',
+    );
+  }
+
+  /// SAVE SLOTS
+
+  static Future<void> saveSlots(
+      List<SlotModel> slots,
+      ) async {
+
+    final data =
+    slots.map(
+          (slot) => slot.toJson(),
+    ).toList();
+
+    await slotsBox.put(
+      'slots',
+      data,
+    );
+  }
+
+  /// GET SLOTS
+
+  static List<SlotModel> getSlots() {
+
+    final data =
+    slotsBox.get('slots');
+
+    if (data == null) {
+      return [];
+    }
+
+    return List<SlotModel>.from(
+
+      (data as List).map(
+
+            (item) => SlotModel.fromJson(
+
+          Map<String, dynamic>.from(item),
+
+        ),
+      ),
     );
   }
 

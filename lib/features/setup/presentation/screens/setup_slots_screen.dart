@@ -1,6 +1,11 @@
 import 'package:flutter/material.dart';
 
+import '../../../../core/storage/storage_service.dart';
+
+import '../../../container_management/data/models/slot_model.dart';
+
 import '../widgets/setup_step_indicator.dart';
+
 import 'setup_complete_screen.dart';
 
 class SetupSlotsScreen
@@ -82,6 +87,65 @@ class _SetupSlotsScreenState
 
       validateFields();
     }
+  }
+
+  Future<void> saveSlots()
+  async {
+
+    final slots =
+    List.generate(
+      6,
+          (index) =>
+          SlotModel(
+            slotNumber:
+            index + 1,
+
+            spiceName:
+            spiceControllers[index]
+                .text
+                .trim(),
+
+            expiryDate:
+            expiryControllers[index]
+                .text
+                .trim(),
+
+            level: 100,
+          ),
+    );
+
+    debugPrint(
+      'SAVING SLOTS...',
+    );
+
+    await StorageService
+        .saveSlots(slots);
+
+    final savedSlots =
+    StorageService.getSlots();
+
+    debugPrint(
+      'SAVED SLOTS: ${savedSlots.length}',
+    );
+
+    for (final slot
+    in savedSlots) {
+
+      debugPrint(
+        'Slot ${slot.slotNumber}: ${slot.spiceName}',
+      );
+    }
+
+    if (!mounted) return;
+
+    Navigator.push(
+      context,
+
+      MaterialPageRoute(
+        builder: (_) =>
+        const SetupCompleteScreen(),
+      ),
+    );
   }
 
   @override
@@ -299,17 +363,7 @@ class _SetupSlotsScreenState
 
                 onPressed:
                 valid
-                    ? () {
-
-                  Navigator.push(
-                    context,
-
-                    MaterialPageRoute(
-                      builder: (_) =>
-                      const SetupCompleteScreen(),
-                    ),
-                  );
-                }
+                    ? saveSlots
                     : null,
 
                 child: const Text(

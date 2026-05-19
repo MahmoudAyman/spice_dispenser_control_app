@@ -1,11 +1,8 @@
 class LevelsResponse {
 
-  final String type;
-
-  final List<dynamic> data;
+  final Map<int, int> data;
 
   LevelsResponse({
-    required this.type,
     required this.data,
   });
 
@@ -13,9 +10,19 @@ class LevelsResponse {
       Map<String, dynamic> json,
       ) {
 
+    Map<int, int> parsed = {};
+
+    if (json['data'] != null) {
+
+      for (var item in json['data']) {
+
+        parsed[item['slot']] =
+        item['level'];
+      }
+    }
+
     return LevelsResponse(
-      type: json['type'],
-      data: json['data'],
+      data: parsed,
     );
   }
 }

@@ -1,11 +1,13 @@
 import 'dart:async';
-import 'dart:convert';
 
 import 'package:flutter_blue_plus/flutter_blue_plus.dart';
 
 import '../constants/ble_constants.dart';
+
 import '../protocol/commands/handshake_command.dart';
+
 import '../protocol/protocol_service.dart';
+
 import '../protocol/responses/ack_response.dart';
 
 class BleService {
@@ -18,38 +20,57 @@ class BleService {
   writeCharacteristic;
 
   BluetoothCharacteristic?
-  notifyCharacteristic;
+  statusCharacteristic;
+
+  BluetoothCharacteristic?
+  syncCharacteristic;
 
   BluetoothDevice?
   connectedDevice;
 
   /// SCAN DEVICES
+
   Future<List<ScanResult>>
   scanDevices() async {
 
     final Map<String, ScanResult>
     uniqueDevices = {};
 
-    await FlutterBluePlus.startScan(
+    print(
+      'STARTING BLE SCAN...',
+    );
+
+    await FlutterBluePlus
+        .startScan(
       timeout:
       const Duration(seconds: 4),
     );
 
-    FlutterBluePlus.scanResults.listen(
+    FlutterBluePlus
+        .scanResults
+        .listen(
           (results) {
 
-        for (var result in results) {
+        for (var result
+        in results) {
 
           final name =
-          result.device.platformName
+          result.device
+              .platformName
               .toLowerCase();
+
+          print(
+            'FOUND DEVICE: $name',
+          );
 
           if (name.contains(
             BleConstants.deviceName,
           )) {
 
             uniqueDevices[
-            result.device.remoteId.str] =
+            result.device
+                .remoteId
+                .str] =
                 result;
           }
         }
@@ -60,47 +81,87 @@ class BleService {
       const Duration(seconds: 4),
     );
 
-    await FlutterBluePlus.stopScan();
+    await FlutterBluePlus
+        .stopScan();
 
-    return uniqueDevices.values
+    print(
+      'SCAN FINISHED',
+    );
+
+    return uniqueDevices
+        .values
         .toList();
   }
 
   /// CONNECT DEVICE
+
   Future<void> connectToDevice(
       BluetoothDevice device,
       ) async {
 
-    connectedDevice = device;
+    connectedDevice =
+        device;
 
-    await device.connect();
+    print(
+      'CONNECTING TO DEVICE...',
+    );
 
-    device.connectionState.listen(
+    await connectedDevice!
+        .connect();
+
+    print(
+      'DEVICE CONNECTED',
+    );
+
+    connectedDevice!
+        .connectionState
+        .listen(
           (state) {
+
+        print(
+          'CONNECTION STATE: $state',
+        );
 
         if (state ==
             BluetoothConnectionState
                 .disconnected) {
 
           print(
-            'Device disconnected',
+            'DEVICE DISCONNECTED',
           );
         }
       },
     );
 
     final services =
-    await device.discoverServices();
+    await connectedDevice!
+        .discoverServices();
 
-    for (var service in services) {
+    print(
+      'DISCOVERED SERVICES: ${services.length}',
+    );
 
-      if (service.uuid.toString() ==
-          BleConstants.serviceUuid) {
+    for (var service
+    in services) {
+
+      print(
+        'SERVICE UUID: ${service.uuid}',
+      );
+
+      if (service.uuid
+          .toString() ==
+          BleConstants
+              .serviceUuid) {
 
         for (var characteristic
         in service.characteristics) {
 
+          print(
+            'CHAR UUID: ${characteristic.uuid}',
+          );
+
           /// WRITE
+
           if (characteristic.uuid
               .toString() ==
               BleConstants
@@ -108,38 +169,88 @@ class BleService {
 
             writeCharacteristic =
                 characteristic;
+
+            print(
+              'WRITE CHARACTERISTIC FOUND',
+            );
           }
 
-          /// NOTIFY
+          /// STATUS
+
           if (characteristic.uuid
               .toString() ==
               BleConstants
-                  .notifyCharacteristicUuid) {
+                  .statusCharacteristicUuid) {
 
-            notifyCharacteristic =
+            statusCharacteristic =
                 characteristic;
+
+            print(
+              'STATUS CHARACTERISTIC FOUND',
+            );
+          }
+
+          /// SYNC
+
+          if (characteristic.uuid
+              .toString() ==
+              BleConstants
+                  .syncCharacteristicUuid) {
+
+            syncCharacteristic =
+                characteristic;
+
+            print(
+              'SYNC CHARACTERISTIC FOUND',
+            );
           }
         }
       }
     }
 
-    /// START NOTIFICATIONS
-    if (notifyCharacteristic != null) {
+    /// START STATUS LISTENER
+
+    if (statusCharacteristic
+        != null) {
+
+      print(
+        'STARTING STATUS LISTENER',
+      );
 
       await protocolService
-          .startListening(
-        notifyCharacteristic!,
+          .startStatusListening(
+        statusCharacteristic!,
+      );
+    }
+
+    /// START SYNC LISTENER
+
+    if (syncCharacteristic
+        != null) {
+
+      print(
+        'STARTING SYNC LISTENER',
+      );
+
+      await protocolService
+          .startSyncListening(
+        syncCharacteristic!,
       );
     }
   }
 
   /// HANDSHAKE
+
   Future<bool> sendHandshake({
     required String uuid,
   }) async {
 
-    if (writeCharacteristic ==
-        null) {
+    if (writeCharacteristic
+        == null) {
+
+      print(
+        'WRITE CHARACTERISTIC IS NULL',
+      );
 
       return false;
     }
@@ -152,6 +263,14 @@ class BleService {
 
     try {
 
+      print(
+        'SENDING HANDSHAKE...',
+      );
+
+      print(
+        command.toJson(),
+      );
+
       final AckResponse ack =
       await protocolService
           .sendCommand(
@@ -160,6 +279,14 @@ class BleService {
 
         command:
         command.toJson(),
+      );
+
+      print(
+        'ACK SUCCESS: ${ack.isSuccess}',
+      );
+
+      print(
+        'ACK STATUS: ${ack.status}',
       );
 
       return ack.isSuccess;
@@ -175,13 +302,16 @@ class BleService {
   }
 
   /// SEND RAW COMMAND
-  Future<AckResponse> sendCommand({
+
+  Future<AckResponse>
+  sendCommand({
+
     required Map<String, dynamic>
     command,
   }) async {
 
-    if (writeCharacteristic ==
-        null) {
+    if (writeCharacteristic
+        == null) {
 
       throw Exception(
         'Write characteristic is null',
@@ -198,10 +328,13 @@ class BleService {
   }
 
   /// DISCONNECT
-  Future<void> disconnectDevice()
+
+  Future<void>
+  disconnectDevice()
   async {
 
-    if (connectedDevice != null) {
+    if (connectedDevice
+        != null) {
 
       await connectedDevice!
           .disconnect();
@@ -209,6 +342,7 @@ class BleService {
   }
 
   /// DISPOSE
+
   void dispose() {
 
     protocolService.dispose();

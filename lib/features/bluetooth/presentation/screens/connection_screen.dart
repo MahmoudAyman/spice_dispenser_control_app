@@ -19,43 +19,21 @@ import '../cubit/bluetooth_state.dart';
 import '../widgets/device_card.dart';
 
 class ConnectionScreen
-    extends StatefulWidget {
+    extends StatelessWidget {
 
   const ConnectionScreen({
     super.key,
   });
 
   @override
-  State<ConnectionScreen>
-  createState() =>
-      _ConnectionScreenState();
-}
-
-class _ConnectionScreenState
-    extends State<
-        ConnectionScreen> {
-
-  @override
-  void initState() {
-
-    super.initState();
-
-    Future.microtask(() {
-
-      context
-          .read<BluetoothCubit>()
-          .tryAutoReconnect();
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
 
     return BlocProvider(
-      create:
-          (_) => BluetoothCubit(
+      create: (_) =>
+      BluetoothCubit(
         BleService(),
-      ),
+      )
+        ..tryAutoReconnect(),
 
       child: BlocListener<
           BluetoothCubit,

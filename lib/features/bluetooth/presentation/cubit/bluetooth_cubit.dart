@@ -1,12 +1,13 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../../core/services/ble_service.dart';
+import '../../../../../core/services/sync_service.dart';
 
 import '../../../../../core/storage/storage_service.dart';
 
-import '../../../../core/services/uuid_service.dart';
-import '../../data/models/ble_device_model.dart';
+import '../../../../../core/services/uuid_service.dart';
 
+import '../../data/models/ble_device_model.dart';
 import '../../data/models/last_connected_machine_model.dart';
 
 import 'bluetooth_state.dart';
@@ -16,11 +17,23 @@ class BluetoothCubit
 
   final BleService bleService;
 
+  late final SyncService
+  syncService;
+
   BluetoothCubit(
       this.bleService,
       ) : super(
     BluetoothInitial(),
-  );
+  ) {
+
+    syncService = SyncService(
+      bleService: bleService,
+      protocolService:
+      bleService.protocolService,
+    );
+  }
+
+  /// SCAN DEVICES
 
   Future<void> scanDevices()
   async {
@@ -47,7 +60,8 @@ class BluetoothCubit
           result.device
               .remoteId.str,
 
-          rssi: result.rssi,
+          rssi:
+          result.rssi,
 
           device:
           result.device,
@@ -70,6 +84,8 @@ class BluetoothCubit
     }
   }
 
+  /// CONNECT DEVICE
+
   Future<void> connectToDevice(
       BleDeviceModel bleDevice,
       ) async {
@@ -80,6 +96,8 @@ class BluetoothCubit
         BluetoothConnecting(),
       );
 
+      /// CONNECT
+
       await bleService
           .connectToDevice(
         bleDevice.device,
@@ -89,15 +107,23 @@ class BluetoothCubit
         BluetoothConnected(),
       );
 
+      /// UUID
+
       final uuid =
-      await UuidService.getUuid();
+      await UuidService
+          .getUuid();
+
+      /// HANDSHAKE
 
       final success =
-      await bleService.sendHandshake(
+      await bleService
+          .sendHandshake(
         uuid: uuid,
       );
 
       if (success) {
+
+        /// SAVE MACHINE
 
         await StorageService
             .saveLastMachine(
@@ -112,6 +138,32 @@ class BluetoothCubit
             bleDevice.name,
           ),
         );
+
+        /// START SYNC LISTENERS
+
+        syncService.startListening();
+
+        /// CHECK MACHINE VERSION
+
+        final machineVersion =
+            bleService
+                .protocolService
+                .machineVersion;
+
+        final needsSync =
+        await syncService
+            .needsSync(
+          machineVersion:
+          machineVersion,
+        );
+
+        /// REQUEST FULL SYNC
+
+        if (needsSync) {
+
+          await syncService
+              .requestSync();
+        }
 
         emit(
           BluetoothHandshakeSuccess(),
@@ -133,6 +185,9 @@ class BluetoothCubit
       );
     }
   }
+
+  /// AUTO RECONNECT
+
   Future<void>
   tryAutoReconnect() async {
 
@@ -164,10 +219,13 @@ class BluetoothCubit
 
         return BleDeviceModel(
           name:
-          result.device.platformName,
+          result.device
+              .platformName,
 
           id:
-          result.device.remoteId.str,
+          result.device
+              .remoteId
+              .str,
 
           rssi:
           result.rssi,
@@ -187,7 +245,8 @@ class BluetoothCubit
                   (device) {
 
                 return device.id ==
-                    lastMachine.deviceId;
+                    lastMachine
+                        .deviceId;
               },
             );
 
@@ -209,14 +268,20 @@ class BluetoothCubit
         BluetoothConnecting(),
       );
 
+      /// CONNECT
+
       await bleService
           .connectToDevice(
         foundDevice.device,
       );
 
+      /// UUID
+
       final uuid =
       await UuidService
           .getUuid();
+
+      /// HANDSHAKE
 
       final success =
       await bleService
@@ -225,6 +290,32 @@ class BluetoothCubit
       );
 
       if (success) {
+
+        /// START SYNC LISTENERS
+
+        syncService.startListening();
+
+        /// CHECK MACHINE VERSION
+
+        final machineVersion =
+            bleService
+                .protocolService
+                .machineVersion;
+
+        final needsSync =
+        await syncService
+            .needsSync(
+          machineVersion:
+          machineVersion,
+        );
+
+        /// REQUEST FULL SYNC
+
+        if (needsSync) {
+
+          await syncService
+              .requestSync();
+        }
 
         emit(
           BluetoothHandshakeSuccess(),
@@ -245,5 +336,13 @@ class BluetoothCubit
         ),
       );
     }
+  }
+
+  @override
+  Future<void> close() {
+
+    bleService.dispose();
+
+    return super.close();
   }
 }

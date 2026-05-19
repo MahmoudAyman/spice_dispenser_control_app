@@ -1,13 +1,10 @@
 class AlertResponse {
 
-  final String type;
-
   final String code;
 
   final int slot;
 
   AlertResponse({
-    required this.type,
     required this.code,
     required this.slot,
   });
@@ -17,9 +14,11 @@ class AlertResponse {
       ) {
 
     return AlertResponse(
-      type: json['type'],
-      code: json['code'],
-      slot: json['slot'],
+      code:
+      json['code'] ?? '',
+
+      slot:
+      json['slot'] ?? 0,
     );
   }
 }

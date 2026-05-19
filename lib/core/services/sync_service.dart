@@ -1,12 +1,8 @@
-import '../../features/container_management/data/models/slot_model.dart';
-import '../../features/recipes/data/models/recipe_model.dart';
-import '../../features/container_management/data/models/slot_model.dart';
-import '../../features/recipes/data/models/recipe_model.dart';
+import '../protocol/commands/get_levels_command.dart';
 
-
-import '../protocol/commands/sync_command.dart';
 import '../protocol/protocol_service.dart';
-import '../protocol/responses/machine_state_response.dart';
+
+import '../protocol/responses/levels_response.dart';
 
 import '../storage/storage_service.dart';
 
@@ -29,19 +25,19 @@ class SyncService {
   void startListening() {
 
     protocolService
-        .machineStateController
+        .levelsController
         .stream
         .listen(
-          (state) async {
+          (levels) async {
 
-        await handleMachineState(
-          state,
+        await handleLevels(
+          levels,
         );
       },
     );
   }
 
-  /// CHECK SYNC
+  /// CHECK IF SYNC NEEDED
 
   Future<bool> needsSync({
     required int machineVersion,
@@ -51,17 +47,17 @@ class SyncService {
     StorageService
         .getAppVersion();
 
-    return machineVersion >
+    return machineVersion !=
         appVersion;
   }
 
-  /// REQUEST SYNC
+  /// REQUEST LEVELS
 
   Future<void> requestSync()
   async {
 
     final command =
-    SyncCommand();
+    GetLevelsCommand();
 
     await bleService.sendCommand(
       command:
@@ -69,63 +65,38 @@ class SyncService {
     );
   }
 
-  /// HANDLE MACHINE STATE
+  /// HANDLE LEVELS
 
-  Future<void> handleMachineState(
-      MachineStateResponse
-      state,
+  Future<void> handleLevels(
+      LevelsResponse levels,
       ) async {
 
-    /// SAVE SLOTS
+    for (var entry
+    in levels.data.entries) {
 
-    for (SlotModel slot
-    in state.slots) {
-
-      await StorageService
+      final slot =
+      StorageService
           .slotsBox
-          .put(
-        slot.slotNumber,
-        slot.toJson(),
-      );
+          .get(entry.key);
+
+      if (slot != null) {
+
+        slot['level'] =
+            entry.value;
+
+        await StorageService
+            .slotsBox
+            .put(
+          entry.key,
+          slot,
+        );
+      }
     }
-
-    /// SAVE RECIPES
-
-    for (RecipeModel recipe
-    in state.recipes) {
-
-      await StorageService
-          .recipesBox
-          .put(
-        recipe.id,
-        recipe.toJson(),
-      );
-    }
-
-    /// UPDATE VERSION
 
     await StorageService
         .saveAppVersion(
-      state.version,
-    );
-
-    /// INITIALIZED
-
-    await StorageService
-        .setInitialized(
-      state.initialized,
-    );
-
-    /// SAVE HASHES
-
-    await StorageService
-        .saveSlotsHash(
-      state.slots,
-    );
-
-    await StorageService
-        .saveRecipesHash(
-      state.recipes,
+      protocolService
+          .machineVersion,
     );
   }
 }

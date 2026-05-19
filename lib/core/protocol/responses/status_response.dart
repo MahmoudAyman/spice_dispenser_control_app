@@ -2,9 +2,9 @@ class StatusResponse {
 
   final String state;
 
-  final int progress;
-
   final int? activeRecipe;
+
+  final int progress;
 
   StatusResponse({
     required this.state,
