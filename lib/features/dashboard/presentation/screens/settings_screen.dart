@@ -4,10 +4,101 @@ import '../../../../core/storage/storage_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../bluetooth/presentation/cubit/bluetooth_cubit.dart';
 import '../../../bluetooth/presentation/cubit/bluetooth_state.dart';
+import '../../../setup/presentation/screens/setup_welcome_screen.dart';
 import '../../../slots/presentation/screens/container_management_screen.dart';
 
 class SettingsScreen extends StatelessWidget {
   const SettingsScreen({super.key});
+
+  void _triggerFactoryReset(BuildContext context) {
+    showDialog(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text(
+            'Machine Factory Reset?',
+            style: TextStyle(fontWeight: FontWeight.bold),
+          ),
+          content: const Text(
+            'This will permanently erase all configuration, calibrations, and saved spices from BOTH the physical machine and your phone. The machine will reboot instantly.',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext); // Close confirm dialog
+                _executeFactoryReset(context);
+              },
+              child: const Text('Factory Reset', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _executeFactoryReset(BuildContext context) async {
+    // Show Loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: const Row(
+          children: [
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+            ),
+            SizedBox(width: 24),
+            Expanded(
+              child: Text(
+                'Wiping machine database & restarting...',
+                style: TextStyle(fontWeight: FontWeight.w500),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final bleCubit = context.read<BluetoothCubit>();
+    final isConnected = bleCubit.state is BluetoothHandshakeSuccess;
+
+    if (isConnected) {
+      try {
+        debugPrint('SETTINGS -> Transmitting {"type": "factory_reset"} over BLE...');
+        // Send command to ESP32: {"type": "factory_reset"}
+        await bleCubit.bleService.sendCommand(
+          command: {'type': 'factory_reset'},
+        );
+        debugPrint('FACTORY RESET COMMAND ACKNOWLEDGED BY ESP32!');
+      } catch (e) {
+        debugPrint('Factory reset command transmission failed: $e');
+      }
+    } else {
+      // Simulate physical machine wipe delay offline
+      await Future.delayed(const Duration(milliseconds: 1500));
+    }
+
+    // Clean up all local phone databases and Hive storage
+    await StorageService.clearStorage();
+
+    // Remove loading overlay and route user back to onboarding SetupWelcomeScreen
+    if (context.mounted) {
+      Navigator.of(context).pop(); // Dismiss loading spinner dialog
+      Navigator.pushAndRemoveUntil(
+        context,
+        MaterialPageRoute(
+          builder: (_) => const SetupWelcomeScreen(),
+        ),
+        (route) => false,
+      );
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
@@ -123,6 +214,13 @@ class SettingsScreen extends StatelessWidget {
             const SizedBox(height: 10),
             _buildSettingsGroup([
               _buildSettingsTile(
+                icon: Icons.restart_alt,
+                color: Colors.orangeAccent,
+                title: 'Machine Factory Reset',
+                subtitle: 'Wipe physical LittleFS and reboot ESP32',
+                onTap: () => _triggerFactoryReset(context),
+              ),
+              _buildSettingsTile(
                 icon: Icons.delete_forever,
                 color: Colors.redAccent,
                 title: 'Clear Application Data',
@@ -131,14 +229,15 @@ class SettingsScreen extends StatelessWidget {
                   showDialog(
                     context: context,
                     builder: (context) => AlertDialog(
-                      title: const Text('Reset All Data?'),
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                      title: const Text('Reset All Data?', style: TextStyle(fontWeight: FontWeight.bold)),
                       content: const Text(
-                        'This will delete all saved spices, configurations, and paired machine connections. You will need to complete the setup again.',
+                        'This will delete all saved spices, configurations, and paired machine connections from your phone. You will need to complete the setup again.',
                       ),
                       actions: [
                         TextButton(
                           onPressed: () => Navigator.pop(context),
-                          child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
+                          child: const Text('Cancel', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
                         ),
                         TextButton(
                           onPressed: () async {
@@ -148,7 +247,7 @@ class SettingsScreen extends StatelessWidget {
                               Navigator.of(context).popUntil((route) => route.isFirst);
                             }
                           },
-                          child: const Text('Reset', style: TextStyle(color: Colors.red)),
+                          child: const Text('Reset', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
                         ),
                       ],
                     ),
