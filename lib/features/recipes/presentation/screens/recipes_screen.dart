@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/storage/storage_service.dart';
@@ -20,6 +21,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
   late RecipeStorageService _recipeStorageService;
   List<RecipeModel> _recipes = [];
   List<SlotModel> _availableSlots = [];
+  bool _isDispensing = false;
 
   @override
   void initState() {
@@ -263,10 +265,33 @@ class _RecipesScreenState extends State<RecipesScreen> {
     );
   }
 
+  void _requestLevels() {
+    try {
+      final bluetoothCubit = context.read<BluetoothCubit>();
+      final isConnected = bluetoothCubit.state is BluetoothHandshakeSuccess;
+      if (isConnected && bluetoothCubit.bleService.writeCharacteristic != null) {
+        debugPrint('Recipes Screen: requesting levels refresh from machine...');
+        bluetoothCubit.syncService.requestSync(); // Sends {"type": "get_levels"}
+      }
+    } catch (e) {
+      debugPrint('Failed to request levels: $e');
+    }
+  }
+
   void _showDispensingDialog(RecipeModel recipe) {
-    int duration = recipe.duration;
-    double progress = 1.0;
-    bool aborted = false;
+    if (_isDispensing) {
+      debugPrint('Dispense already active. Double click ignored.');
+      return;
+    }
+    _isDispensing = true;
+
+    bool isRequesting = true;
+    String? errorMessage;
+    double progress = 0.0;
+    String currentStatusMsg = 'Searching Spices';
+    String currentDetail = 'Aligning with dispenser carousel...';
+    StreamSubscription? statusSubscription;
+    StreamSubscription? alertSubscription;
 
     showDialog(
       context: context,
@@ -274,20 +299,148 @@ class _RecipesScreenState extends State<RecipesScreen> {
       builder: (BuildContext dialogContext) {
         return StatefulBuilder(
           builder: (context, setDialogState) {
-            // Start a timer to update countdown
-            Future.delayed(const Duration(seconds: 1), () {
-              if (!dialogContext.mounted || aborted) return;
-              if (duration > 0) {
-                setDialogState(() {
-                  duration--;
-                  progress = duration / recipe.duration;
-                });
-              } else {
-                Navigator.of(dialogContext).pop();
-                _showSuccessSnackBar(recipe.name);
+            
+            // Helper to handle cancel/abort
+            Future<void> handleAbort() async {
+              statusSubscription?.cancel();
+              alertSubscription?.cancel();
+              Navigator.of(dialogContext).pop();
+              
+              // Write abort command
+              try {
+                final bluetoothCubit = context.read<BluetoothCubit>();
+                await bluetoothCubit.bleService.sendCommand(
+                  command: {'type': 'abort'},
+                );
+              } catch (e) {
+                debugPrint('Failed to send abort: $e');
               }
-            });
+              _showAbortSnackBar(recipe.name);
+            }
 
+            // Start the BLE send order if isRequesting is true and subscription is not set
+            if (isRequesting && statusSubscription == null) {
+              isRequesting = false; // Set immediately so we don't send multiple times
+              
+              final bluetoothCubit = context.read<BluetoothCubit>();
+              final dispenseItems = recipe.ingredients.map((ing) {
+                return {
+                  'name': ing.name,
+                  'grams': ing.grams,
+                };
+              }).toList();
+
+              // Send the command
+              bluetoothCubit.bleService.sendCommand(
+                command: {
+                  'type': 'dispense',
+                  'items': dispenseItems,
+                },
+                timeout: const Duration(seconds: 4),
+              ).then((ack) {
+                if (ack.status == 'fail') {
+                  // Failed to dispense! Check reasons (insufficient_spice, etc.)
+                  String errorText = 'The machine refused to dispense this recipe.';
+                  if (ack.reason == 'insufficient_spice') {
+                    final missingSpice = ack.detail ?? 'unknown spice';
+                    errorText = 'Insufficient Spice! "${missingSpice}" is running low or is below the required amount in the machine.';
+                  } else if (ack.reason != null) {
+                    errorText = 'Rejected by machine: ${ack.reason}';
+                    if (ack.detail != null) {
+                      errorText += ' (${ack.detail})';
+                    }
+                  }
+                  
+                  setDialogState(() {
+                    errorMessage = errorText;
+                  });
+                } else {
+                  // Successfully ACKed! Start listening to physical status stream
+                  debugPrint('Dispense command accepted! Listening to live progress stream...');
+                  
+                  statusSubscription = bluetoothCubit.bleService.protocolService.statusController.stream.listen((status) {
+                    debugPrint('Dispense Live Progress: state=${status.state}, progress=${status.progress}');
+                    
+                    setDialogState(() {
+                      progress = status.progress / 100.0;
+                      if (status.statusMsg != null && status.statusMsg!.isNotEmpty) {
+                        currentStatusMsg = status.statusMsg!;
+                      }
+                      if (status.detail != null && status.detail!.isNotEmpty) {
+                        currentDetail = status.detail!;
+                      }
+                    });
+
+                    // Check if complete
+                    if (status.state.toLowerCase() == 'idle' && status.progress >= 100) {
+                      statusSubscription?.cancel();
+                      alertSubscription?.cancel();
+                      Navigator.of(dialogContext).pop();
+                      
+                      _showSuccessSnackBar(recipe.name);
+                      
+                      // Refresh physical levels dynamically
+                      _requestLevels();
+                    }
+                  });
+
+                  // Listen to alert stream in case of mismatch/error
+                  alertSubscription = bluetoothCubit.bleService.protocolService.alertController.stream.listen((alert) {
+                    debugPrint('Alert received during dispense: ${alert.code}, blocking=${alert.blocking}');
+                    
+                    if (!alert.blocking) {
+                      // SCENARIO B: A passive background warning.
+                      // Do NOT disrupt the current layout or dialog. Simply show a brief SnackBar warning!
+                      String spiceName = 'Slot ${alert.slot}';
+                      try {
+                        final slot = _availableSlots.firstWhere((s) => s.slotNumber == alert.slot);
+                        if (slot.spiceName.isNotEmpty) {
+                          spiceName = slot.spiceName;
+                        }
+                      } catch (_) {}
+                      
+                      ScaffoldMessenger.of(context).showSnackBar(
+                        SnackBar(
+                          content: Row(
+                            children: [
+                              const Icon(Icons.info_outline, color: Colors.white),
+                              const SizedBox(width: 8),
+                              Expanded(child: Text('Note: "$spiceName" is running low (below 15%).')),
+                            ],
+                          ),
+                          backgroundColor: Colors.orange,
+                          duration: const Duration(seconds: 4),
+                        ),
+                      );
+                      return; // Keep listening, do not close or fail the dialog!
+                    }
+
+                    // SCENARIO A: An active blocking error occurred. Halt dispensing and show error modal.
+                    String text = 'Machine Alert during dispense: ${alert.code}';
+                    if (alert.code == 'low_spice') {
+                      text = 'Dispensing Error: Low spice level detected during operation on slot ${alert.slot}.';
+                    } else if (alert.code == 'wrong_spice') {
+                      text = 'Dispensing Error: TCS3200 sensor detected correct spice mismatch at slot ${alert.slot}!';
+                    } else if (alert.code == 'missing_ingredient') {
+                      text = 'Dispensing Terminated: Required spice could not be found at slot ${alert.slot}.';
+                    }
+
+                    statusSubscription?.cancel();
+                    alertSubscription?.cancel();
+                    
+                    setDialogState(() {
+                      errorMessage = text;
+                    });
+                  });
+                }
+              }).catchError((e) {
+                setDialogState(() {
+                  errorMessage = 'Connection Error: Failed to write dispense command to machine.';
+                });
+              });
+            }
+
+            // BUILD DIALOG WIDGET
             return Dialog(
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(28),
@@ -299,96 +452,121 @@ class _RecipesScreenState extends State<RecipesScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    const SizedBox(height: 10),
-                    Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        SizedBox(
-                          width: 140,
-                          height: 140,
-                          child: CircularProgressIndicator(
-                            value: progress,
-                            strokeWidth: 10,
-                            backgroundColor: Colors.grey[100],
-                            valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
+                    // Error Screen inside the Dialog
+                    if (errorMessage != null) ...[
+                      const Icon(Icons.error_outline_rounded, color: Colors.redAccent, size: 64),
+                      const SizedBox(height: 20),
+                      const Text(
+                        'Dispense Failed',
+                        style: TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.black),
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        errorMessage!,
+                        style: const TextStyle(fontSize: 14, color: Colors.grey, height: 1.4),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 32),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 50,
+                        child: ElevatedButton(
+                          onPressed: () {
+                            statusSubscription?.cancel();
+                            alertSubscription?.cancel();
+                            Navigator.of(dialogContext).pop();
+                            
+                            // Re-request levels to update screen map in case levels changed
+                            _requestLevels();
+                          },
+                          style: ElevatedButton.styleFrom(
+                            backgroundColor: AppColors.primary,
+                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(14)),
+                          ),
+                          child: const Text('Close', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                        ),
+                      ),
+                    ]
+                    // Connection / Sending command phase
+                    else if (statusSubscription == null) ...[
+                      const SizedBox(height: 10),
+                      const CircularProgressIndicator(),
+                      const SizedBox(height: 24),
+                      const Text(
+                        'Connecting with Dispenser...',
+                        style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                      const Text(
+                        'Waiting for machine response...',
+                        style: TextStyle(color: Colors.grey, fontSize: 13),
+                      ),
+                      const SizedBox(height: 10),
+                    ]
+                    // Dispensing state with active real progress
+                    else ...[
+                      Stack(
+                        alignment: Alignment.center,
+                        children: [
+                          SizedBox(
+                            width: 140,
+                            height: 140,
+                            child: CircularProgressIndicator(
+                              value: progress,
+                              strokeWidth: 10,
+                              backgroundColor: Colors.grey[100],
+                              valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
+                            ),
+                          ),
+                          Text(
+                            '${(progress * 100).toInt()}%',
+                            style: const TextStyle(
+                              fontSize: 32,
+                              fontWeight: FontWeight.bold,
+                              color: AppColors.black,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 32),
+                      Text(
+                        currentStatusMsg,
+                        style: const TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.black,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        currentDetail,
+                        style: const TextStyle(
+                          fontSize: 14,
+                          color: AppColors.grey,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                      const SizedBox(height: 32),
+                      SizedBox(
+                        width: double.infinity,
+                        height: 52,
+                        child: OutlinedButton(
+                          onPressed: handleAbort,
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: Colors.red,
+                            side: const BorderSide(color: Colors.red, width: 1.5),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(16),
+                            ),
+                          ),
+                          child: const Text(
+                            'Abort Dispensing',
+                            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
                           ),
                         ),
-                        Column(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Text(
-                              '$duration',
-                              style: const TextStyle(
-                                fontSize: 42,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.black,
-                              ),
-                            ),
-                            const Text(
-                              'seconds',
-                              style: TextStyle(
-                                fontSize: 14,
-                                color: AppColors.grey,
-                              ),
-                            ),
-                          ],
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 32),
-                    Text(
-                      'Dispensing ${recipe.name}',
-                      style: const TextStyle(
-                        fontSize: 22,
-                        fontWeight: FontWeight.bold,
-                        color: AppColors.black,
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      'Please place your container under the dispensing nozzle.',
-                      style: TextStyle(
-                        fontSize: 14,
-                        color: AppColors.grey,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                    const SizedBox(height: 32),
-                    SizedBox(
-                      width: double.infinity,
-                      height: 52,
-                      child: OutlinedButton(
-                        onPressed: () async {
-                          aborted = true;
-                          Navigator.of(dialogContext).pop();
-                          // Send Abort Command to Machine if connected
-                          try {
-                            final bluetoothCubit = context.read<BluetoothCubit>();
-                            if (bluetoothCubit.state is BluetoothHandshakeSuccess || 
-                                bluetoothCubit.bleService.writeCharacteristic != null) {
-                              await bluetoothCubit.bleService.sendCommand(
-                                command: {'type': 'abort'},
-                              );
-                            }
-                          } catch (e) {
-                            debugPrint('Failed to send abort command: $e');
-                          }
-                          _showAbortSnackBar(recipe.name);
-                        },
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: Colors.red,
-                          side: const BorderSide(color: Colors.red, width: 1.5),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                        ),
-                        child: const Text(
-                          'Abort Dispensing',
-                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                      ),
-                    ),
+                    ],
                   ],
                 ),
               ),
@@ -396,33 +574,11 @@ class _RecipesScreenState extends State<RecipesScreen> {
           },
         );
       },
-    );
-
-    // Send Dispense Command with actual ingredients and weights in grams to ESP32
-    try {
-      final bluetoothCubit = context.read<BluetoothCubit>();
-      if (bluetoothCubit.state is BluetoothHandshakeSuccess || 
-          bluetoothCubit.bleService.writeCharacteristic != null) {
-        
-        final dispenseItems = recipe.ingredients.map((ing) {
-          return {
-            'name': ing.name,
-            'grams': ing.grams,
-          };
-        }).toList();
-
-        bluetoothCubit.bleService.sendCommand(
-          command: {
-            'type': 'dispense',
-            'items': dispenseItems,
-          },
-        ).then((ack) {
-          debugPrint('Dispense Ack Received: ${ack.isSuccess}');
-        });
-      }
-    } catch (e) {
-      debugPrint('Failed to send dispense command: $e');
-    }
+    ).then((_) {
+      _isDispensing = false;
+      statusSubscription?.cancel();
+      alertSubscription?.cancel();
+    });
   }
 
   void _showSuccessSnackBar(String recipeName) {
