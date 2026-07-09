@@ -231,11 +231,37 @@ class StorageService {
       'slots',
       data,
     );
+
+    for (var slot in slots) {
+      await slotsBox.put(
+        slot.slotNumber,
+        slot.toJson(),
+      );
+    }
   }
 
   /// GET SLOTS
 
   static List<SlotModel> getSlots() {
+
+    final slots = <SlotModel>[];
+    for (var key in slotsBox.keys) {
+      if (key is int) {
+        final val = slotsBox.get(key);
+        if (val != null) {
+          slots.add(
+            SlotModel.fromJson(
+              Map<String, dynamic>.from(val),
+            ),
+          );
+        }
+      }
+    }
+
+    if (slots.isNotEmpty) {
+      slots.sort((a, b) => a.slotNumber.compareTo(b.slotNumber));
+      return slots;
+    }
 
     final data =
     slotsBox.get('slots');

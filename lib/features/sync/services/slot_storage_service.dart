@@ -31,16 +31,6 @@ class SlotStorageService {
   }
 
   List<SlotModel> getSlots() {
-
-    return StorageService
-        .slotsBox
-        .values
-        .map((e) {
-
-      return SlotModel.fromJson(
-        Map<String, dynamic>.from(e),
-      );
-
-    }).toList();
+    return StorageService.getSlots();
   }
 }
