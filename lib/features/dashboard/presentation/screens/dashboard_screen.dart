@@ -38,42 +38,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
     final recipeService = RecipeStorageService();
     var list = recipeService.getRecipes();
 
-    // Pre-populate if empty
-    if (list.isEmpty) {
-      _prepopulatePresets(recipeService);
-      list = recipeService.getRecipes();
-    }
-
     setState(() {
       recentRecipes = list.take(2).toList();
     });
   }
 
-  void _prepopulatePresets(RecipeStorageService service) {
-    final presets = [
-      RecipeModel(
-        id: 'italian_seasoning',
-        name: 'Italian Herbs',
-        ingredients: ['Oregano', 'Basil', 'Rosemary', 'Thyme'],
-        duration: 5,
-      ),
-      RecipeModel(
-        id: 'taco_mix',
-        name: 'Taco Seasoning',
-        ingredients: ['Chili Powder', 'Cumin', 'Paprika', 'Onion Powder'],
-        duration: 8,
-      ),
-      RecipeModel(
-        id: 'curry_powder',
-        name: 'Curry Blend',
-        ingredients: ['Turmeric', 'Coriander', 'Cumin', 'Ginger'],
-        duration: 10,
-      ),
-    ];
-    for (var recipe in presets) {
-      service.addRecipe(recipe);
-    }
-  }
+
 
   Color _getLevelColor(int level) {
     if (level <= 20) return const Color(0xFFEF4444); // Red
@@ -216,11 +186,18 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final bluetoothCubit = context.read<BluetoothCubit>();
       if (bluetoothCubit.state is BluetoothHandshakeSuccess || 
           bluetoothCubit.bleService.writeCharacteristic != null) {
+        
+        final dispenseItems = recipe.ingredients.map((ing) {
+          return {
+            'name': ing.name,
+            'grams': ing.grams,
+          };
+        }).toList();
+
         bluetoothCubit.bleService.sendCommand(
           command: {
             'type': 'dispense',
-            'recipe_id': recipe.id,
-            'duration': recipe.duration,
+            'items': dispenseItems,
           },
         ).then((ack) {
           debugPrint('Dispense Ack Received: ${ack.isSuccess}');

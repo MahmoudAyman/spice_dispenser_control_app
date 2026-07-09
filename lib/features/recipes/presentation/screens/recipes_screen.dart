@@ -6,6 +6,7 @@ import '../../../bluetooth/presentation/cubit/bluetooth_cubit.dart';
 import '../../../bluetooth/presentation/cubit/bluetooth_state.dart';
 import '../../../container_management/data/models/slot_model.dart';
 import '../../../sync/services/recipe_storage_service.dart';
+import '../../../sync/services/recipe_sync_service.dart';
 import '../../data/models/recipe_model.dart';
 
 class RecipesScreen extends StatefulWidget {
@@ -16,70 +17,250 @@ class RecipesScreen extends StatefulWidget {
 }
 
 class _RecipesScreenState extends State<RecipesScreen> {
-  final RecipeStorageService _recipeStorageService = RecipeStorageService();
+  late RecipeStorageService _recipeStorageService;
   List<RecipeModel> _recipes = [];
   List<SlotModel> _availableSlots = [];
 
   @override
   void initState() {
     super.initState();
+    _initStorage();
     _loadData();
+    _cleanInvalidRecipes();
+  }
+
+  void _initStorage() {
+    final bluetoothCubit = context.read<BluetoothCubit>();
+    final macAddress = bluetoothCubit.bleService.connectedDevice?.remoteId.str ?? 
+                       StorageService.getLastMachine()?.deviceId;
+    _recipeStorageService = RecipeStorageService(macAddress);
   }
 
   void _loadData() {
     // Load available slots (spices) from storage
     _availableSlots = StorageService.getSlots();
 
-    // Load recipes from storage
-    List<RecipeModel> savedRecipes = _recipeStorageService.getRecipes();
-
-    // If no recipes exist, let's pre-populate with some beautiful preset recipes
-    if (savedRecipes.isEmpty) {
-      _prepopulatePresets();
-      savedRecipes = _recipeStorageService.getRecipes();
-    }
-
-    setState(() {
-      _recipes = savedRecipes;
-    });
+    // Load recipes from storage for this specific machine (Categorized by MAC)
+    _recipes = _recipeStorageService.getRecipes();
+    setState(() {});
   }
 
-  void _prepopulatePresets() {
-    final presets = [
-      RecipeModel(
-        id: 'italian_seasoning',
-        name: 'Italian Herbs',
-        ingredients: ['Oregano', 'Basil', 'Rosemary', 'Thyme'],
-        duration: 5,
-      ),
-      RecipeModel(
-        id: 'taco_mix',
-        name: 'Taco Seasoning',
-        ingredients: ['Chili Powder', 'Cumin', 'Paprika', 'Onion Powder'],
-        duration: 8,
-      ),
-      RecipeModel(
-        id: 'curry_powder',
-        name: 'Curry Blend',
-        ingredients: ['Turmeric', 'Coriander', 'Cumin', 'Ginger'],
-        duration: 10,
-      ),
-    ];
+  /// SELF-HEALING DATABASE MIGRATION & CLEANUP
+  /// Sweeps away legacy/invalid recipes containing unregistered ingredients or old defaults
+  void _cleanInvalidRecipes() async {
+    final activeSpices = _availableSlots
+        .where((s) => s.spiceName.trim().isNotEmpty)
+        .map((s) => s.spiceName.trim().toLowerCase())
+        .toSet();
 
-    for (var recipe in presets) {
-      // Only include ingredients if they are available in the setup or fallback to presets
-      _recipeStorageService.addRecipe(recipe);
+    final allRecipes = _recipeStorageService.getRecipes();
+    bool cleanedAny = false;
+
+    for (var recipe in allRecipes) {
+      bool hasInvalid = false;
+      
+      if (recipe.ingredients.isEmpty) {
+        hasInvalid = true;
+      } else {
+        for (var ing in recipe.ingredients) {
+          if (!activeSpices.contains(ing.name.trim().toLowerCase())) {
+            hasInvalid = true;
+            break;
+          }
+        }
+      }
+
+      // Detect old placeholder ids and remove them
+      final isPresetId = recipe.id == 'italian_seasoning' || 
+                         recipe.id == 'taco_mix' || 
+                         recipe.id == 'curry_powder';
+
+      if (hasInvalid || isPresetId) {
+        await _recipeStorageService.deleteRecipe(recipe.id);
+        cleanedAny = true;
+        debugPrint('Self-Healing: Deleted invalid/legacy recipe: ${recipe.name}');
+      }
+    }
+
+    if (cleanedAny) {
+      _loadData();
     }
   }
 
-  Future<void> _deleteRecipe(String id) async {
-    await _recipeStorageService.deleteRecipe(id);
-    _loadData();
-    if (mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Recipe deleted successfully')),
+  /// TRANSACTIONAL SYNC & DATABASE OPERATION HELPER (With automatic rollback)
+  Future<void> _performDbAndSync({
+    required Future<void> Function() dbOperation,
+    required String successMessage,
+  }) async {
+    // Backup current recipe list in case rollback is needed
+    final previousRecipes = List<RecipeModel>.from(_recipes);
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Syncing recipes with machine...',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Updating dispenser local memory...',
+                style: TextStyle(color: Colors.grey[600], fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      // 1. Perform database operation locally
+      await dbOperation();
+
+      // 2. Fetch updated list
+      final updatedRecipes = _recipeStorageService.getRecipes();
+
+      // 3. Sync entire list to the connected ESP32
+      final bluetoothCubit = context.read<BluetoothCubit>();
+      final syncService = RecipeSyncService();
+      
+      final result = await syncService.syncAllRecipes(
+        bleService: bluetoothCubit.bleService,
+        recipes: updatedRecipes,
       );
+
+      // Dismiss progress dialog safely
+      if (mounted) {
+        Navigator.pop(context);
+      }
+
+      if (result.isSuccess) {
+        // Reload GUI
+        _loadData();
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(successMessage)),
+                ],
+              ),
+              backgroundColor: AppColors.green,
+            ),
+          );
+        }
+      } else {
+        // Rollback on machine validation failure
+        debugPrint('Sync failed. Reverting local recipe DB changes...');
+        for (var recipe in updatedRecipes) {
+          await _recipeStorageService.deleteRecipe(recipe.id);
+        }
+        for (var recipe in previousRecipes) {
+          await _recipeStorageService.addRecipe(recipe);
+        }
+        _loadData();
+
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              title: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+                  SizedBox(width: 10),
+                  // Fixes the right overflow by 20 pixels issue in the dialog title
+                  Expanded(
+                    child: Text('Machine Refused Sync', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    result.errorReason ?? 'The dispenser rejected this configuration.',
+                    style: const TextStyle(fontSize: 15, height: 1.4),
+                  ),
+                  if (result.missingIngredient != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.info_outline, color: Colors.amber, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Missing Spice: "${result.missingIngredient}" must be physically setup on the machine first.',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xDD000000)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Go Back', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary)),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Dismiss progress dialog
+      if (mounted) {
+        Navigator.pop(context);
+      }
+
+      // Revert local changes on unexpected exception
+      for (var recipe in previousRecipes) {
+        await _recipeStorageService.addRecipe(recipe);
+      }
+      _loadData();
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Unexpected error during sync: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
     }
+  }
+
+  void _deleteRecipe(RecipeModel recipe) {
+    _performDbAndSync(
+      dbOperation: () async {
+        await _recipeStorageService.deleteRecipe(recipe.id);
+      },
+      successMessage: 'Deleted "${recipe.name}" successfully!',
+    );
   }
 
   void _showDispensingDialog(RecipeModel recipe) {
@@ -217,16 +398,23 @@ class _RecipesScreenState extends State<RecipesScreen> {
       },
     );
 
-    // Send Dispense Command to ESP32 Machine if connected
+    // Send Dispense Command with actual ingredients and weights in grams to ESP32
     try {
       final bluetoothCubit = context.read<BluetoothCubit>();
       if (bluetoothCubit.state is BluetoothHandshakeSuccess || 
           bluetoothCubit.bleService.writeCharacteristic != null) {
+        
+        final dispenseItems = recipe.ingredients.map((ing) {
+          return {
+            'name': ing.name,
+            'grams': ing.grams,
+          };
+        }).toList();
+
         bluetoothCubit.bleService.sendCommand(
           command: {
             'type': 'dispense',
-            'recipe_id': recipe.id,
-            'duration': recipe.duration,
+            'items': dispenseItems,
           },
         ).then((ack) {
           debugPrint('Dispense Ack Received: ${ack.isSuccess}');
@@ -273,155 +461,6 @@ class _RecipesScreenState extends State<RecipesScreen> {
     );
   }
 
-  void _showCreateRecipeDialog() {
-    final nameController = TextEditingController();
-    final durationController = TextEditingController(text: '5');
-    final selectedSpices = <String>{};
-
-    // Filter available slots to those that actually have a spice name filled in
-    final activeSpices = _availableSlots
-        .where((s) => s.spiceName.trim().isNotEmpty)
-        .map((s) => s.spiceName.trim())
-        .toList();
-
-    // If no spices have been set up yet, use a standard preset list
-    final spicesToChoose = activeSpices.isNotEmpty 
-        ? activeSpices 
-        : ['Oregano', 'Basil', 'Rosemary', 'Thyme', 'Chili Powder', 'Cumin', 'Paprika', 'Garlic Powder', 'Turmeric'];
-
-    showDialog(
-      context: context,
-      builder: (BuildContext context) {
-        return StatefulBuilder(
-          builder: (context, setDialogState) {
-            return AlertDialog(
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
-              title: const Text(
-                'Create Custom Recipe',
-                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 20),
-              ),
-              content: SingleChildScrollView(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    TextField(
-                      controller: nameController,
-                      decoration: InputDecoration(
-                        labelText: 'Recipe Name',
-                        hintText: 'e.g., Spaghetti Mix',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        prefixIcon: const Icon(Icons.restaurant_menu),
-                      ),
-                    ),
-                    const SizedBox(height: 20),
-                    TextField(
-                      controller: durationController,
-                      keyboardType: TextInputType.number,
-                      decoration: InputDecoration(
-                        labelText: 'Dispense Duration (seconds)',
-                        hintText: 'e.g., 5',
-                        border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                        prefixIcon: const Icon(Icons.timer_outlined),
-                      ),
-                    ),
-                    const SizedBox(height: 24),
-                    const Text(
-                      'Select Ingredients:',
-                      style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: AppColors.black),
-                    ),
-                    const SizedBox(height: 10),
-                    Wrap(
-                      spacing: 8,
-                      runSpacing: 8,
-                      children: spicesToChoose.map((spice) {
-                        final isSelected = selectedSpices.contains(spice);
-                        return FilterChip(
-                          selected: isSelected,
-                          label: Text(spice),
-                          onSelected: (selected) {
-                            setDialogState(() {
-                              if (selected) {
-                                selectedSpices.add(spice);
-                              } else {
-                                selectedSpices.remove(spice);
-                              }
-                            });
-                          },
-                          selectedColor: AppColors.primary.withOpacity(0.15),
-                          checkmarkColor: AppColors.primary,
-                          labelStyle: TextStyle(
-                            color: isSelected ? AppColors.primary : AppColors.black,
-                            fontWeight: isSelected ? FontWeight.bold : FontWeight.normal,
-                          ),
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(10),
-                            side: BorderSide(
-                              color: isSelected ? AppColors.primary : Colors.grey[300]!,
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ],
-                ),
-              ),
-              actions: [
-                TextButton(
-                  onPressed: () => Navigator.of(context).pop(),
-                  child: const Text('Cancel', style: TextStyle(color: Colors.grey)),
-                ),
-                ElevatedButton(
-                  onPressed: () {
-                    final name = nameController.text.trim();
-                    final duration = int.tryParse(durationController.text.trim()) ?? 5;
-
-                    if (name.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Please enter a recipe name')),
-                      );
-                      return;
-                    }
-
-                    if (selectedSpices.isEmpty) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Please select at least one ingredient')),
-                      );
-                      return;
-                    }
-
-                    final newRecipe = RecipeModel(
-                      id: 'custom_${DateTime.now().millisecondsSinceEpoch}',
-                      name: name,
-                      ingredients: selectedSpices.toList(),
-                      duration: duration,
-                    );
-
-                    _recipeStorageService.addRecipe(newRecipe);
-                    _loadData();
-                    Navigator.of(context).pop();
-
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(
-                        content: Text('Created "$name" successfully!'),
-                        backgroundColor: AppColors.green,
-                      ),
-                    );
-                  },
-                  style: ElevatedButton.styleFrom(
-                    backgroundColor: AppColors.primary,
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
-                  child: const Text('Create'),
-                ),
-              ],
-            );
-          },
-        );
-      },
-    );
-  }
-
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -434,7 +473,14 @@ class _RecipesScreenState extends State<RecipesScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.add, color: Colors.white),
-            onPressed: _showCreateRecipeDialog,
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (context) => const RecipeFormScreen(),
+                ),
+              ).then((_) => _loadData());
+            },
             tooltip: 'Create Custom Recipe',
           ),
         ],
@@ -454,6 +500,24 @@ class _RecipesScreenState extends State<RecipesScreen> {
                   const Text(
                     'Create custom spice mixes to dispense them instantly.',
                     style: TextStyle(fontSize: 14, color: AppColors.grey),
+                  ),
+                  const SizedBox(height: 24),
+                  ElevatedButton.icon(
+                    onPressed: () {
+                      Navigator.push(
+                        context,
+                        MaterialPageRoute(
+                          builder: (context) => const RecipeFormScreen(),
+                        ),
+                      ).then((_) => _loadData());
+                    },
+                    icon: const Icon(Icons.add, color: Colors.white),
+                    label: const Text('Add Your First Recipe', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white)),
+                    style: ElevatedButton.styleFrom(
+                      backgroundColor: AppColors.primary,
+                      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                    ),
                   ),
                 ],
               ),
@@ -523,7 +587,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
                         children: recipe.ingredients.map((ingredient) {
                           return Chip(
                             label: Text(
-                              ingredient,
+                              '${ingredient.name} (${ingredient.grams}g)',
                               style: const TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.white),
                             ),
                             backgroundColor: AppColors.primary.withOpacity(0.85),
@@ -553,7 +617,21 @@ class _RecipesScreenState extends State<RecipesScreen> {
                               ),
                             ),
                           ),
-                          const SizedBox(width: 12),
+                          const SizedBox(width: 10),
+                          // EDIT ICON BUTTON (Pushes RecipeFormScreen full route)
+                          IconButton(
+                            icon: const Icon(Icons.edit_outlined, color: AppColors.primary),
+                            onPressed: () {
+                              Navigator.push(
+                                context,
+                                MaterialPageRoute(
+                                  builder: (context) => RecipeFormScreen(recipe: recipe),
+                                ),
+                              ).then((_) => _loadData());
+                            },
+                            tooltip: 'Edit Recipe',
+                          ),
+                          const SizedBox(width: 4),
                           IconButton(
                             icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
                             onPressed: () {
@@ -570,7 +648,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
                                     TextButton(
                                       onPressed: () {
                                         Navigator.pop(context);
-                                        _deleteRecipe(recipe.id);
+                                        _deleteRecipe(recipe);
                                       },
                                       child: const Text('Delete', style: TextStyle(color: Colors.red)),
                                     ),
@@ -586,6 +664,751 @@ class _RecipesScreenState extends State<RecipesScreen> {
                 );
               },
             ),
+    );
+  }
+}
+
+/// DEDICATED RECIPE CARD HELPER MODEL
+class _SpiceEntry {
+  SlotModel? selectedSlot;
+  final TextEditingController gramsController;
+
+  _SpiceEntry({
+    this.selectedSlot,
+    required String grams,
+  }) : gramsController = TextEditingController(text: grams);
+}
+
+/// FIGMA COMPLIANT RECIPE CREATE & EDIT SCREEN
+/// Full-screen layout that perfectly implements /ref/create_edit_recipe.png
+class RecipeFormScreen extends StatefulWidget {
+  final RecipeModel? recipe;
+
+  const RecipeFormScreen({super.key, this.recipe});
+
+  @override
+  State<RecipeFormScreen> createState() => _RecipeFormScreenState();
+}
+
+class _RecipeFormScreenState extends State<RecipeFormScreen> {
+  final _nameController = TextEditingController();
+  final List<_SpiceEntry> _spiceEntries = [];
+  List<SlotModel> _availableSlots = [];
+  late RecipeStorageService _recipeStorageService;
+  bool _isEdit = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _isEdit = widget.recipe != null;
+    _initStorage();
+    _loadSlots();
+    _prepopulateForm();
+  }
+
+  void _initStorage() {
+    final bluetoothCubit = context.read<BluetoothCubit>();
+    final macAddress = bluetoothCubit.bleService.connectedDevice?.remoteId.str ?? 
+                       StorageService.getLastMachine()?.deviceId;
+    _recipeStorageService = RecipeStorageService(macAddress);
+  }
+
+  void _loadSlots() {
+    _availableSlots = StorageService.getSlots();
+  }
+
+  void _prepopulateForm() {
+    if (_isEdit && widget.recipe != null) {
+      _nameController.text = widget.recipe!.name;
+      
+      // Load selected ingredients to entries
+      for (var ing in widget.recipe!.ingredients) {
+        // Try to find the matching SlotModel by spice name
+        SlotModel? matchingSlot;
+        try {
+          matchingSlot = _availableSlots.firstWhere(
+            (s) => s.spiceName.trim().toLowerCase() == ing.name.trim().toLowerCase(),
+          );
+        } catch (_) {
+          matchingSlot = null;
+        }
+
+        // If not found in physical slots, make a dummy virtual SlotModel representing offline spice
+        matchingSlot ??= SlotModel(
+          slotNumber: 0,
+          spiceName: ing.name,
+          expiryDate: '',
+          level: 100,
+        );
+
+        _spiceEntries.add(
+          _SpiceEntry(
+            selectedSlot: matchingSlot,
+            grams: ing.grams.toString(),
+          ),
+        );
+      }
+    } else {
+      // Create mode starts with 1 empty spice entry
+      _spiceEntries.add(_SpiceEntry(grams: '5'));
+    }
+  }
+
+  @override
+  void dispose() {
+    _nameController.dispose();
+    for (var entry in _spiceEntries) {
+      entry.gramsController.dispose();
+    }
+    super.dispose();
+  }
+
+  double _calculateTotalWeight() {
+    double total = 0.0;
+    for (var entry in _spiceEntries) {
+      final grams = double.tryParse(entry.gramsController.text) ?? 0.0;
+      total += grams;
+    }
+    return total;
+  }
+
+  int _calculateDistinctSpicesCount() {
+    return _spiceEntries
+        .where((e) => e.selectedSlot != null && e.selectedSlot!.spiceName.isNotEmpty)
+        .map((e) => e.selectedSlot!.spiceName.trim().toLowerCase())
+        .toSet()
+        .length;
+  }
+
+  /// TRANSACTIONAL SYNC & SAVE WITH AUTOMATIC DB ROLLBACK ON FAILURE
+  Future<void> _saveAndSyncRecipe() async {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a recipe name'), backgroundColor: Colors.redAccent),
+      );
+      return;
+    }
+
+    if (_spiceEntries.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please add at least one spice'), backgroundColor: Colors.redAccent),
+      );
+      return;
+    }
+
+    // Validation checks
+    for (int i = 0; i < _spiceEntries.length; i++) {
+      final entry = _spiceEntries[i];
+      if (entry.selectedSlot == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Please select a spice slot for row ${i + 1}'), backgroundColor: Colors.redAccent),
+        );
+        return;
+      }
+
+      final gramsStr = entry.gramsController.text.trim();
+      final grams = double.tryParse(gramsStr);
+      if (grams == null || grams <= 0.0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Please enter a valid weight in grams for row ${i + 1}'), backgroundColor: Colors.redAccent),
+        );
+        return;
+      }
+    }
+
+    // Duplicate detection
+    final selectedSlots = _spiceEntries.map((e) => e.selectedSlot!.slotNumber).toList();
+    if (selectedSlots.toSet().length < selectedSlots.length) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot select the same slot multiple times in a recipe'), backgroundColor: Colors.redAccent),
+      );
+      return;
+    }
+
+    // Map entries to RecipeIngredient models
+    final List<RecipeIngredient> recipeIngredients = _spiceEntries.map((e) {
+      return RecipeIngredient(
+        name: e.selectedSlot!.spiceName,
+        grams: double.parse(e.gramsController.text),
+      );
+    }).toList();
+
+    // Auto-calculate duration linearly based on grams (e.g. 1g = 1s, minimum 5 seconds)
+    final totalGrams = _calculateTotalWeight();
+    final duration = totalGrams.ceil() < 5 ? 5 : totalGrams.ceil();
+
+    final savedRecipe = RecipeModel(
+      id: widget.recipe?.id ?? 'custom_${DateTime.now().millisecondsSinceEpoch}',
+      name: name,
+      ingredients: recipeIngredients,
+      duration: duration,
+    );
+
+    // Save previous recipes for rollback
+    final previousRecipes = _recipeStorageService.getRecipes();
+
+    // Show Progress dialogue
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        child: Padding(
+          padding: const EdgeInsets.all(24.0),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              const CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+              ),
+              const SizedBox(height: 20),
+              const Text(
+                'Syncing recipes with machine...',
+                style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+              ),
+              const SizedBox(height: 8),
+              Text(
+                'Verifying ingredients on-device...',
+                style: TextStyle(color: Colors.grey[600], fontSize: 13),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    try {
+      // 1. Perform database operation locally (Optimistic)
+      if (_isEdit) {
+        await _recipeStorageService.updateRecipe(savedRecipe);
+      } else {
+        await _recipeStorageService.addRecipe(savedRecipe);
+      }
+
+      // 2. Fetch updated list
+      final updatedRecipes = _recipeStorageService.getRecipes();
+
+      // 3. Sync to machine
+      final bluetoothCubit = context.read<BluetoothCubit>();
+      final syncService = RecipeSyncService();
+      final result = await syncService.syncAllRecipes(
+        bleService: bluetoothCubit.bleService,
+        recipes: updatedRecipes,
+      );
+
+      // Dismiss progress loader
+      if (mounted) {
+        Navigator.pop(context);
+      }
+
+      if (result.isSuccess) {
+        // Success! Pop back to Recipes list and show notification
+        if (mounted) {
+          Navigator.pop(context);
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Row(
+                children: [
+                  const Icon(Icons.check_circle, color: Colors.white),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: Text(_isEdit 
+                        ? 'Updated "${savedRecipe.name}" and synced with dispenser!' 
+                        : 'Created "${savedRecipe.name}" and synced with dispenser!'),
+                  ),
+                ],
+              ),
+              backgroundColor: AppColors.green,
+            ),
+          );
+        }
+      } else {
+        // Validation Error! ROLLBACK local database changes instantly
+        debugPrint('Machine rejected recipe. Rolling back database changes...');
+        for (var recipe in updatedRecipes) {
+          await _recipeStorageService.deleteRecipe(recipe.id);
+        }
+        for (var recipe in previousRecipes) {
+          await _recipeStorageService.addRecipe(recipe);
+        }
+
+        // Show detailed failure alert
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (context) => AlertDialog(
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+              title: const Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: Colors.orange, size: 28),
+                  SizedBox(width: 10),
+                  Expanded(
+                    child: Text('Machine Refused Sync', style: TextStyle(fontWeight: FontWeight.bold)),
+                  ),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    result.errorReason ?? 'The dispenser rejected this configuration.',
+                    style: const TextStyle(fontSize: 15, height: 1.4),
+                  ),
+                  if (result.missingIngredient != null) ...[
+                    const SizedBox(height: 12),
+                    Container(
+                      padding: const EdgeInsets.all(12),
+                      decoration: BoxDecoration(
+                        color: Colors.amber.withOpacity(0.1),
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.amber.withOpacity(0.3)),
+                      ),
+                      child: Row(
+                        children: [
+                          const Icon(Icons.info_outline, color: Colors.amber, size: 20),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              'Missing Spice: "${result.missingIngredient}" must be physically setup on the machine first.',
+                              style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Color(0xDD000000)),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.pop(context),
+                  child: const Text('Go Back and Fix', style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.primary)),
+                ),
+              ],
+            ),
+          );
+        }
+      }
+    } catch (e) {
+      // Dismiss progress loader
+      if (mounted) {
+        Navigator.pop(context);
+      }
+
+      // Revert local changes on unexpected exception
+      for (var recipe in previousRecipes) {
+        await _recipeStorageService.addRecipe(recipe);
+      }
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Unexpected error during sync: $e'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    // Dropdown choices: active physical slot names configured on device
+    final activeSlots = _availableSlots
+        .where((s) => s.spiceName.trim().isNotEmpty)
+        .toList();
+
+    // Fallback choices if empty to maintain onboarding usability
+    final List<SlotModel> dropdownSlots = activeSlots.isNotEmpty
+        ? activeSlots
+        : List.generate(
+            9,
+            (idx) {
+              final presetsList = ['Oregano', 'Basil', 'Rosemary', 'Thyme', 'Chili Powder', 'Cumin', 'Paprika', 'Garlic Powder', 'Turmeric'];
+              return SlotModel(
+                slotNumber: idx + 1,
+                spiceName: presetsList[idx],
+                expiryDate: '',
+                level: 100,
+              );
+            },
+          );
+
+    final totalWeight = _calculateTotalWeight();
+    final selectedSpicesCount = _calculateDistinctSpicesCount();
+
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC), // PREMIUM LIGHT GRAY-BLUE FROM FIGMA
+      body: Column(
+        children: [
+          // CUSTOM BLUE APP HEADER TO MATCH FIGMA IMAGE PERFECTLY
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.only(left: 16, right: 20, top: 48, bottom: 20),
+            color: const Color(0xFF1E52E8), // Primary Blue from figma
+            child: Row(
+              children: [
+                IconButton(
+                  icon: const Icon(Icons.arrow_back, color: Colors.white, size: 26),
+                  onPressed: () => Navigator.pop(context),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        _isEdit ? 'Edit Recipe' : 'Create Recipe',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        '$selectedSpicesCount / 20 spices',
+                        style: const TextStyle(
+                          color: Colors.white70,
+                          fontSize: 13,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                // FIGMA COMPLIANT SAVE BUTTON (WHITE BACKGROUND, DISK ICON, BLUE TEXT)
+                ElevatedButton.icon(
+                  onPressed: _saveAndSyncRecipe,
+                  icon: const Icon(Icons.save, color: Color(0xFF1E52E8), size: 18),
+                  label: const Text(
+                    'Save',
+                    style: TextStyle(
+                      color: Color(0xFF1E52E8),
+                      fontWeight: FontWeight.bold,
+                      fontSize: 14,
+                    ),
+                  ),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: Colors.white,
+                    elevation: 1,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(10),
+                    ),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          
+          // SCROLLABLE FORM BODY
+          Expanded(
+            child: SingleChildScrollView(
+              padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  // CARD 1: RECIPE NAME SECTION
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(20),
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                    ),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Recipe Name',
+                          style: TextStyle(
+                            color: Color(0xFF1E293B),
+                            fontWeight: FontWeight.bold,
+                            fontSize: 14,
+                          ),
+                        ),
+                        const SizedBox(height: 10),
+                        TextField(
+                          controller: _nameController,
+                          style: const TextStyle(fontWeight: FontWeight.w500, fontSize: 16),
+                          decoration: InputDecoration(
+                            hintText: 'e.g., Spaghetti Mix',
+                            hintStyle: const TextStyle(color: Color(0xFF94A3B8)),
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(12),
+                              borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  
+                  const SizedBox(height: 28),
+                  
+                  // ROW 2: SPICES HEADER WITH + ADD SPICE BUTTON
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Spices',
+                        style: TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      ElevatedButton.icon(
+                        onPressed: () {
+                          setState(() {
+                            _spiceEntries.add(_SpiceEntry(grams: '5'));
+                          });
+                        },
+                        icon: const Icon(Icons.add, color: Colors.white, size: 18),
+                        label: const Text(
+                          'Add Spice',
+                          style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.white,
+                          ),
+                        ),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1E52E8),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(10),
+                          ),
+                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                          elevation: 0,
+                        ),
+                      ),
+                    ],
+                  ),
+                  
+                  const SizedBox(height: 16),
+                  
+                  // LIST OF DYNAMIC SPICE ENTRIES
+                  ListView.builder(
+                    shrinkWrap: true,
+                    physics: const NeverScrollableScrollPhysics(),
+                    itemCount: _spiceEntries.length,
+                    itemBuilder: (context, idx) {
+                      final entry = _spiceEntries[idx];
+
+                      return Container(
+                        margin: const EdgeInsets.only(bottom: 14),
+                        padding: const EdgeInsets.all(16),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(16),
+                          border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                        ),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            // GRAB REORDER HANDLE (DECORATIVE DESIGN AS IN FIGMA)
+                            const Padding(
+                              padding: EdgeInsets.only(top: 14.0),
+                              child: Icon(
+                                Icons.drag_indicator,
+                                color: Color(0xFF94A3B8),
+                                size: 24,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            
+                            // MAIN FIELDS SECTION
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  // SPICE SLOT SELECTION
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: Column(
+                                          crossAxisAlignment: CrossAxisAlignment.start,
+                                          children: [
+                                            const Text(
+                                              'Spice Slot',
+                                              style: TextStyle(
+                                                color: Color(0xFF64748B),
+                                                fontSize: 12,
+                                                fontWeight: FontWeight.bold,
+                                              ),
+                                            ),
+                                            const SizedBox(height: 6),
+                                            DropdownButtonFormField<SlotModel>(
+                                              value: entry.selectedSlot,
+                                              isExpanded: true,
+                                              style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.black, fontSize: 15),
+                                              decoration: InputDecoration(
+                                                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
+                                                border: OutlineInputBorder(
+                                                  borderRadius: BorderRadius.circular(12),
+                                                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                                                ),
+                                                enabledBorder: OutlineInputBorder(
+                                                  borderRadius: BorderRadius.circular(12),
+                                                  borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
+                                                ),
+                                                focusedBorder: OutlineInputBorder(
+                                                  borderRadius: BorderRadius.circular(12),
+                                                  borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
+                                                ),
+                                              ),
+                                              items: dropdownSlots.map((slot) {
+                                                final displayText = slot.slotNumber == 0 
+                                                    ? slot.spiceName // Offline fallback
+                                                    : 'Slot ${slot.slotNumber}: ${slot.spiceName}';
+                                                return DropdownMenuItem<SlotModel>(
+                                                  value: slot,
+                                                  child: Text(
+                                                    displayText,
+                                                    overflow: TextOverflow.ellipsis,
+                                                  ),
+                                                );
+                                              }).toList(),
+                                              onChanged: (val) {
+                                                setState(() {
+                                                  entry.selectedSlot = val;
+                                                });
+                                              },
+                                            ),
+                                          ],
+                                        ),
+                                      ),
+                                      const SizedBox(width: 10),
+                                      // RED TRASH ICON ALIGNED CENTRALLY WITH DROP BOX FROM FIGMA
+                                      Padding(
+                                        padding: const EdgeInsets.only(top: 18.0),
+                                        child: IconButton(
+                                          icon: const Icon(Icons.delete, color: Color(0xFFEF4444), size: 24),
+                                          onPressed: () {
+                                            setState(() {
+                                              _spiceEntries.removeAt(idx);
+                                            });
+                                          },
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                  
+                                  const SizedBox(height: 14),
+                                  
+                                  // QUANTITY (GRAMS) TEXT INPUT
+                                  const Text(
+                                    'Quantity (grams)',
+                                    style: TextStyle(
+                                      color: Color(0xFF64748B),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                  const SizedBox(height: 6),
+                                  Row(
+                                    children: [
+                                      Expanded(
+                                        child: SizedBox(
+                                          height: 44,
+                                          child: TextField(
+                                            controller: entry.gramsController,
+                                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
+                                            decoration: InputDecoration(
+                                              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
+                                              border: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(12),
+                                                borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                                              ),
+                                              enabledBorder: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(12),
+                                                borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
+                                              ),
+                                              focusedBorder: OutlineInputBorder(
+                                                borderRadius: BorderRadius.circular(12),
+                                                borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
+                                              ),
+                                            ),
+                                            onChanged: (_) {
+                                              setState(() {});
+                                            },
+                                          ),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 12),
+                                      // OUTSIDE 'g' SYMBOL FROM FIGMA
+                                      const Text(
+                                        'g',
+                                        style: TextStyle(
+                                          color: Color(0xFF64748B),
+                                          fontSize: 16,
+                                          fontWeight: FontWeight.bold,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                  
+                  const SizedBox(height: 12),
+                  
+                  // BOTTOM CARD: DYNAMIC TOTAL WEIGHT DISPLAY
+                  Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFEFF6FF), // Light blue background from figma
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFBFDBFE), width: 1.5),
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Total Weight',
+                          style: TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1E3A8A), // Dark blue from figma
+                          ),
+                        ),
+                        Text(
+                          '${totalWeight.toStringAsFixed(1)} g',
+                          style: const TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1E52E8), // Primary Blue from figma
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                ],
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

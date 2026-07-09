@@ -1,5 +1,7 @@
 import 'package:flutter/foundation.dart';
 import '../../../features/container_management/data/models/slot_model.dart';
+import '../../../features/sync/services/recipe_storage_service.dart';
+import '../../../features/sync/services/recipe_sync_service.dart';
 import '../protocol/commands/get_levels_command.dart';
 import '../protocol/protocol_service.dart';
 import '../protocol/responses/levels_response.dart';
@@ -103,6 +105,38 @@ class SyncService {
       debugPrint('MANIFEST SYNCED SLOT ${slotModel.slotNumber}: ${slotModel.spiceName} (${slotModel.level}%)');
     } else if (item.type == 'manifest_end') {
       debugPrint('MANIFEST SYNC COMPLETED SUCCESSFULLY!');
+      _syncRecipesToMachine();
+    }
+  }
+
+  /// AUTO-SYNC RECIPES TO MACHINE RAM FOR PHYSICAL LCD MENU
+  Future<void> _syncRecipesToMachine() async {
+    try {
+      final macAddress = StorageService.getLastMachine()?.deviceId;
+      if (macAddress == null) return;
+
+      final storageService = RecipeStorageService(macAddress);
+      final recipes = storageService.getRecipes();
+
+      if (recipes.isEmpty) {
+        debugPrint('No stored recipes found for MAC $macAddress. Skipping automatic BLE sync.');
+        return;
+      }
+
+      debugPrint('Auto-syncing ${recipes.length} recipes to machine...');
+      final syncService = RecipeSyncService();
+      final result = await syncService.syncAllRecipes(
+        bleService: bleService,
+        recipes: recipes,
+      );
+
+      if (result.isSuccess) {
+        debugPrint('Auto-sync of recipes completed successfully!');
+      } else {
+        debugPrint('Auto-sync of recipes failed: ${result.errorReason}');
+      }
+    } catch (e) {
+      debugPrint('Error during auto-syncing recipes: $e');
     }
   }
 }
