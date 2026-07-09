@@ -16,12 +16,20 @@ import 'responses/alert_response.dart';
 
 import 'responses/levels_response.dart';
 
+import 'responses/manifest_response.dart';
+
 class ProtocolService {
 
   /// ACK STREAM
 
   final StreamController<AckResponse>
   ackController =
+  StreamController.broadcast();
+
+  /// MANIFEST STREAM
+
+  final StreamController<ManifestResponse>
+  manifestController =
   StreamController.broadcast();
 
   /// STATUS STREAM
@@ -191,6 +199,14 @@ class ProtocolService {
             );
           }
 
+          else if (parsed
+          is ManifestResponse) {
+
+            manifestController.add(
+              parsed,
+            );
+          }
+
         } catch (e) {
 
           print(
@@ -286,5 +302,7 @@ class ProtocolService {
     alertController.close();
 
     levelsController.close();
+
+    manifestController.close();
   }
 }

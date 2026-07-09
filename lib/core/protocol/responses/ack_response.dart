@@ -1,29 +1,38 @@
 class AckResponse {
-
   final String command;
-
   final String status;
+  final bool? newDevice;
+  final String? reason;
+  final String? detail;
+  final int? slot;
+  final String? name;
 
   AckResponse({
     required this.command,
     required this.status,
+    this.newDevice,
+    this.reason,
+    this.detail,
+    this.slot,
+    this.name,
   });
 
   bool get isSuccess {
-
-    return status.toLowerCase() == 'success';
+    final s = status.toLowerCase();
+    return s == 'success' || s == 'ready' || s == 'unconfigured';
   }
 
   factory AckResponse.fromJson(
-      Map<String, dynamic> json,
-      ) {
-
+    Map<String, dynamic> json,
+  ) {
     return AckResponse(
-      command:
-      json['command'] ?? '',
-
-      status:
-      json['status'] ?? 'failed',
+      command: json['command'] ?? '',
+      status: json['status'] ?? 'failed',
+      newDevice: json['new_device'],
+      reason: json['reason'],
+      detail: json['detail'],
+      slot: json['slot'],
+      name: json['name'],
     );
   }
 }

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../../core/services/ble_service.dart';
@@ -143,26 +144,12 @@ class BluetoothCubit
 
         syncService.startListening();
 
-        /// CHECK MACHINE VERSION
+        /// REQUEST PHYSICAL MANIFEST (SLOTS MAPPING)
 
-        final machineVersion =
-            bleService
-                .protocolService
-                .machineVersion;
-
-        final needsSync =
-        await syncService
-            .needsSync(
-          machineVersion:
-          machineVersion,
-        );
-
-        /// REQUEST FULL SYNC
-
-        if (needsSync) {
-
-          await syncService
-              .requestSync();
+        try {
+          await syncService.requestManifest();
+        } catch (e) {
+          debugPrint('Failed to sync physical manifest on handshake: $e');
         }
 
         emit(
@@ -295,26 +282,12 @@ class BluetoothCubit
 
         syncService.startListening();
 
-        /// CHECK MACHINE VERSION
+        /// REQUEST PHYSICAL MANIFEST (SLOTS MAPPING)
 
-        final machineVersion =
-            bleService
-                .protocolService
-                .machineVersion;
-
-        final needsSync =
-        await syncService
-            .needsSync(
-          machineVersion:
-          machineVersion,
-        );
-
-        /// REQUEST FULL SYNC
-
-        if (needsSync) {
-
-          await syncService
-              .requestSync();
+        try {
+          await syncService.requestManifest();
+        } catch (e) {
+          debugPrint('Failed to sync physical manifest on handshake: $e');
         }
 
         emit(

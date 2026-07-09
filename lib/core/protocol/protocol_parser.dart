@@ -6,6 +6,8 @@ import 'responses/levels_response.dart';
 
 import 'responses/status_response.dart';
 
+import 'responses/manifest_response.dart';
+
 class ProtocolParser {
 
   static dynamic parse(
@@ -38,6 +40,14 @@ class ProtocolParser {
       case 'alert':
 
         return AlertResponse.fromJson(
+          json,
+        );
+
+      case 'manifest_start':
+      case 'manifest_item':
+      case 'manifest_end':
+
+        return ManifestResponse.fromJson(
           json,
         );
 
