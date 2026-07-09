@@ -1,43 +1,83 @@
 import 'package:flutter/material.dart';
+
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../../core/services/ble_service.dart';
+
+import '../../../../../core/services/uuid_service.dart';
+
+import '../../../../../core/storage/storage_service.dart';
+
 import '../../../dashboard/presentation/screens/dashboard_screen.dart';
+
+import '../../../setup/presentation/screens/setup_welcome_screen.dart';
+
 import '../cubit/bluetooth_cubit.dart';
+
 import '../cubit/bluetooth_state.dart';
+
 import '../widgets/device_card.dart';
 
-class ConnectionScreen extends StatelessWidget {
-  const ConnectionScreen({super.key});
+class ConnectionScreen
+    extends StatelessWidget {
+
+  const ConnectionScreen({
+    super.key,
+  });
 
   @override
   Widget build(BuildContext context) {
+
     return BlocProvider(
-      create: (_) => BluetoothCubit(
+      create: (_) =>
+      BluetoothCubit(
         BleService(),
-      ),
+      )
+        ..tryAutoReconnect(),
+
       child: BlocListener<
           BluetoothCubit,
           BluetoothState>(
-        listener: (context, state) {
+        listener:
+            (context, state) {
 
           if (state
           is BluetoothHandshakeSuccess) {
 
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(
-                builder: (_) =>
-                const DashboardScreen(),
-              ),
-            );
+            final initialized =
+            StorageService
+                .isInitialized();
+
+            if (initialized) {
+
+              Navigator.pushReplacement(
+                context,
+
+                MaterialPageRoute(
+                  builder: (_) =>
+                  const DashboardScreen(),
+                ),
+              );
+
+            } else {
+
+              Navigator.pushReplacement(
+                context,
+
+                MaterialPageRoute(
+                  builder: (_) =>
+                  const SetupWelcomeScreen(),
+                ),
+              );
+            }
           }
 
           if (state
           is BluetoothHandshakeFailed) {
 
-            ScaffoldMessenger.of(context)
-                .showSnackBar(
+            ScaffoldMessenger.of(
+              context,
+            ).showSnackBar(
               const SnackBar(
                 content: Text(
                   'Authentication Failed',
@@ -46,61 +86,103 @@ class ConnectionScreen extends StatelessWidget {
             );
           }
         },
+
         child: Scaffold(
           backgroundColor:
-          const Color(0xFFF1F5F9),
+          const Color(
+            0xFFF1F5F9,
+          ),
+
           body: SafeArea(
             child: Column(
               children: [
 
                 /// HEADER
                 Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.only(
+                  width:
+                  double.infinity,
+
+                  padding:
+                  const EdgeInsets.only(
                     left: 24,
                     right: 24,
                     top: 24,
                     bottom: 30,
                   ),
-                  decoration: const BoxDecoration(
-                    color: Color(0xFF2563EB),
+
+                  decoration:
+                  const BoxDecoration(
+                    color:
+                    Color(
+                      0xFF2563EB,
+                    ),
                   ),
-                  child: const Column(
+
+                  child:
+                  const Column(
                     crossAxisAlignment:
-                    CrossAxisAlignment.start,
+                    CrossAxisAlignment
+                        .start,
+
                     children: [
 
                       Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisAlignment:
+                        MainAxisAlignment
+                            .center,
+
                         children: [
 
                           Icon(
-                            Icons.bluetooth,
-                            color: Colors.white,
+                            Icons
+                                .bluetooth,
+
+                            color:
+                            Colors
+                                .white,
                           ),
 
-                          SizedBox(width: 12),
+                          SizedBox(
+                            width:
+                            12,
+                          ),
 
                           Text(
                             'Spice Dispenser',
-                            style: TextStyle(
-                              color: Colors.white,
-                              fontSize: 32,
+
+                            style:
+                            TextStyle(
+                              color:
+                              Colors
+                                  .white,
+
+                              fontSize:
+                              32,
+
                               fontWeight:
-                              FontWeight.bold,
+                              FontWeight
+                                  .bold,
                             ),
                           ),
                         ],
                       ),
 
-                      SizedBox(height: 10),
+                      SizedBox(
+                        height: 10,
+                      ),
 
                       Center(
                         child: Text(
                           'Connect to your device',
-                          style: TextStyle(
-                            color: Colors.white70,
-                            fontSize: 16,
+
+                          style:
+                          TextStyle(
+                            color:
+                            Colors
+                                .white70,
+
+                            fontSize:
+                            16,
                           ),
                         ),
                       ),
@@ -110,32 +192,50 @@ class ConnectionScreen extends StatelessWidget {
 
                 /// SCAN BAR
                 Container(
-                  color: Colors.white,
+                  color:
+                  Colors.white,
+
                   padding:
-                  const EdgeInsets.all(16),
+                  const EdgeInsets.all(
+                    16,
+                  ),
+
                   child: Row(
                     children: [
 
                       const Icon(
                         Icons.bluetooth,
-                        color: Colors.grey,
+
+                        color:
+                        Colors.grey,
                       ),
 
-                      const SizedBox(width: 10),
+                      const SizedBox(
+                        width: 10,
+                      ),
 
                       Expanded(
-                        child: BlocBuilder<
+                        child:
+                        BlocBuilder<
                             BluetoothCubit,
                             BluetoothState>(
-                          builder: (context, state) {
+                          builder:
+                              (
+                              context,
+                              state,
+                              ) {
 
                             if (state
                             is BluetoothLoading) {
 
                               return const Text(
                                 'Scanning...',
-                                style: TextStyle(
-                                  fontSize: 16,
+
+                                style:
+                                TextStyle(
+                                  fontSize:
+                                  16,
+
                                   fontWeight:
                                   FontWeight
                                       .w500,
@@ -144,12 +244,19 @@ class ConnectionScreen extends StatelessWidget {
                             }
 
                             if (state
-                            is BluetoothConnecting) {
+                            is BluetoothConnecting ||
+
+                                state
+                                is BluetoothAutoConnecting) {
 
                               return const Text(
                                 'Authenticating...',
-                                style: TextStyle(
-                                  fontSize: 16,
+
+                                style:
+                                TextStyle(
+                                  fontSize:
+                                  16,
+
                                   fontWeight:
                                   FontWeight
                                       .w500,
@@ -159,10 +266,15 @@ class ConnectionScreen extends StatelessWidget {
 
                             return const Text(
                               'Ready to scan',
-                              style: TextStyle(
-                                fontSize: 16,
+
+                              style:
+                              TextStyle(
+                                fontSize:
+                                16,
+
                                 fontWeight:
-                                FontWeight.w500,
+                                FontWeight
+                                    .w500,
                               ),
                             );
                           },
@@ -172,16 +284,24 @@ class ConnectionScreen extends StatelessWidget {
                       BlocBuilder<
                           BluetoothCubit,
                           BluetoothState>(
-                        builder: (context, state) {
+                        builder:
+                            (
+                            context,
+                            state,
+                            ) {
 
                           final isScanning =
-                          state
-                          is BluetoothLoading;
+                              state
+                              is BluetoothLoading ||
+
+                                  state
+                                  is BluetoothAutoConnecting;
 
                           return SizedBox(
                             height: 50,
-                            child: ElevatedButton(
 
+                            child:
+                            ElevatedButton(
                               style:
                               ElevatedButton
                                   .styleFrom(
@@ -196,8 +316,7 @@ class ConnectionScreen extends StatelessWidget {
                                 shape:
                                 RoundedRectangleBorder(
                                   borderRadius:
-                                  BorderRadius
-                                      .circular(
+                                  BorderRadius.circular(
                                     12,
                                   ),
                                 ),
@@ -206,7 +325,23 @@ class ConnectionScreen extends StatelessWidget {
                               onPressed:
                               isScanning
                                   ? null
-                                  : () {
+                                  : () async {
+
+                                final uuid =
+                                await UuidService
+                                    .getUuid();
+
+                                print(
+                                  'USER UUID: $uuid',
+                                );
+
+                                final lastMachine =
+                                StorageService
+                                    .getLastMachine();
+
+                                print(
+                                  'LAST MACHINE: ${lastMachine?.deviceName}',
+                                );
 
                                 context
                                     .read<
@@ -216,25 +351,34 @@ class ConnectionScreen extends StatelessWidget {
 
                               child: Row(
                                 mainAxisSize:
-                                MainAxisSize.min,
+                                MainAxisSize
+                                    .min,
+
                                 children: [
 
                                   if (isScanning)
                                     const SizedBox(
-                                      width: 18,
-                                      height: 18,
+                                      width:
+                                      18,
+
+                                      height:
+                                      18,
+
                                       child:
                                       CircularProgressIndicator(
                                         strokeWidth:
                                         2,
-                                        color: Colors
+
+                                        color:
+                                        Colors
                                             .white,
                                       ),
                                     ),
 
                                   if (isScanning)
                                     const SizedBox(
-                                      width: 10,
+                                      width:
+                                      10,
                                     ),
 
                                   Text(
@@ -245,7 +389,9 @@ class ConnectionScreen extends StatelessWidget {
                                     style:
                                     const TextStyle(
                                       color:
-                                      Colors.white,
+                                      Colors
+                                          .white,
+
                                       fontWeight:
                                       FontWeight
                                           .bold,
@@ -263,21 +409,27 @@ class ConnectionScreen extends StatelessWidget {
 
                 /// TITLE
                 const Padding(
-                  padding: EdgeInsets.only(
+                  padding:
+                  EdgeInsets.only(
                     top: 24,
                     left: 20,
                     right: 20,
                     bottom: 12,
                   ),
+
                   child: Row(
                     children: [
 
                       Text(
                         'Available Devices',
-                        style: TextStyle(
+
+                        style:
+                        TextStyle(
                           fontSize: 30,
+
                           fontWeight:
-                          FontWeight.bold,
+                          FontWeight
+                              .bold,
                         ),
                       ),
                     ],
@@ -286,10 +438,15 @@ class ConnectionScreen extends StatelessWidget {
 
                 /// DEVICES LIST
                 Expanded(
-                  child: BlocBuilder<
+                  child:
+                  BlocBuilder<
                       BluetoothCubit,
                       BluetoothState>(
-                    builder: (context, state) {
+                    builder:
+                        (
+                        context,
+                        state,
+                        ) {
 
                       if (state
                       is BluetoothLoading) {
@@ -301,23 +458,34 @@ class ConnectionScreen extends StatelessWidget {
                       }
 
                       if (state
-                      is BluetoothConnecting) {
+                      is BluetoothConnecting ||
+
+                          state
+                          is BluetoothAutoConnecting) {
 
                         return const Center(
                           child: Column(
                             mainAxisAlignment:
                             MainAxisAlignment
                                 .center,
+
                             children: [
 
                               CircularProgressIndicator(),
 
-                              SizedBox(height: 20),
+                              SizedBox(
+                                height:
+                                20,
+                              ),
 
                               Text(
                                 'Authenticating Device...',
-                                style: TextStyle(
-                                  fontSize: 18,
+
+                                style:
+                                TextStyle(
+                                  fontSize:
+                                  18,
+
                                   fontWeight:
                                   FontWeight
                                       .w600,
@@ -332,7 +500,8 @@ class ConnectionScreen extends StatelessWidget {
                       is BluetoothLoaded) {
 
                         if (state
-                            .devices.isEmpty) {
+                            .devices
+                            .isEmpty) {
 
                           return const Center(
                             child: Text(
@@ -341,31 +510,40 @@ class ConnectionScreen extends StatelessWidget {
                           );
                         }
 
-                        return ListView.builder(
+                        return ListView
+                            .builder(
                           padding:
-                          const EdgeInsets
-                              .symmetric(
-                            horizontal: 20,
+                          const EdgeInsets.symmetric(
+                            horizontal:
+                            20,
                           ),
 
                           itemCount:
-                          state.devices.length,
+                          state
+                              .devices
+                              .length,
 
                           itemBuilder:
-                              (context, index) {
+                              (
+                              context,
+                              index,
+                              ) {
 
                             return DeviceCard(
                               device:
-                              state.devices[
+                              state
+                                  .devices[
                               index],
 
-                              onTap: () {
+                              onTap:
+                                  () {
 
                                 context
                                     .read<
                                     BluetoothCubit>()
                                     .connectToDevice(
-                                  state.devices[
+                                  state
+                                      .devices[
                                   index],
                                 );
                               },
@@ -378,8 +556,10 @@ class ConnectionScreen extends StatelessWidget {
                       is BluetoothError) {
 
                         return Center(
-                          child:
-                          Text(state.message),
+                          child: Text(
+                            state
+                                .message,
+                          ),
                         );
                       }
 
@@ -390,21 +570,31 @@ class ConnectionScreen extends StatelessWidget {
 
                 /// FOOTER
                 Container(
-                  width: double.infinity,
+                  width:
+                  double.infinity,
 
                   padding:
-                  const EdgeInsets.all(20),
+                  const EdgeInsets.all(
+                    20,
+                  ),
 
-                  color: Colors.white,
+                  color:
+                  Colors.white,
 
-                  child: const Text(
+                  child:
+                  const Text(
                     'Make sure your Spice Dispenser is powered on and within range',
 
-                    textAlign: TextAlign.center,
+                    textAlign:
+                    TextAlign.center,
 
-                    style: TextStyle(
-                      color: Colors.grey,
-                      fontSize: 14,
+                    style:
+                    TextStyle(
+                      color:
+                      Colors.grey,
+
+                      fontSize:
+                      14,
                     ),
                   ),
                 ),

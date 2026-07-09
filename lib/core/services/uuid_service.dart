@@ -1,24 +1,25 @@
-import 'package:shared_preferences/shared_preferences.dart';
 import 'package:uuid/uuid.dart';
+
+import '../storage/storage_service.dart';
 
 class UuidService {
 
-  static const String key = 'app_uuid';
+  static Future<String> getUuid()
+  async {
 
-  static Future<String> getUuid() async {
+    final savedUuid =
+    StorageService.getUuid();
 
-    final prefs =
-    await SharedPreferences.getInstance();
-
-    String? uuid = prefs.getString(key);
-
-    if (uuid != null) {
-      return uuid;
+    if (savedUuid != null) {
+      return savedUuid;
     }
 
-    uuid = const Uuid().v4();
+    final uuid =
+    const Uuid().v4();
 
-    await prefs.setString(key, uuid);
+    await StorageService.saveUuid(
+      uuid,
+    );
 
     return uuid;
   }
