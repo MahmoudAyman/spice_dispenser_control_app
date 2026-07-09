@@ -1,23 +1,29 @@
 import 'package:flutter/material.dart';
 import '../../../../core/theme/app_colors.dart';
-import '../../../slots/presentation/screens/container_management_screen.dart';
 import '../../../recipes/presentation/screens/recipes_screen.dart';
 import 'dashboard_screen.dart';
+import 'settings_screen.dart';
 
 class MainLayoutScreen extends StatefulWidget {
   const MainLayoutScreen({super.key});
 
   @override
-  State<MainLayoutScreen> createState() => _MainLayoutScreenState();
+  State<MainLayoutScreen> createState() => MainLayoutScreenState();
 }
 
-class _MainLayoutScreenState extends State<MainLayoutScreen> {
+class MainLayoutScreenState extends State<MainLayoutScreen> {
   int _currentIndex = 0;
+
+  void setTab(int index) {
+    setState(() {
+      _currentIndex = index;
+    });
+  }
 
   final List<Widget> _screens = const [
     DashboardScreen(),
-    ContainerManagementScreen(),
     RecipesScreen(),
+    SettingsScreen(),
   ];
 
   @override
@@ -39,11 +45,7 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
         ),
         child: BottomNavigationBar(
           currentIndex: _currentIndex,
-          onTap: (index) {
-            setState(() {
-              _currentIndex = index;
-            });
-          },
+          onTap: setTab,
           backgroundColor: AppColors.white,
           selectedItemColor: AppColors.primary,
           unselectedItemColor: AppColors.grey.withOpacity(0.6),
@@ -61,35 +63,35 @@ class _MainLayoutScreenState extends State<MainLayoutScreen> {
             BottomNavigationBarItem(
               icon: Padding(
                 padding: EdgeInsets.only(bottom: 4),
-                child: Icon(Icons.dashboard_outlined),
+                child: Icon(Icons.home_outlined),
               ),
               activeIcon: Padding(
                 padding: EdgeInsets.only(bottom: 4),
-                child: Icon(Icons.dashboard),
+                child: Icon(Icons.home),
               ),
-              label: 'Dashboard',
+              label: 'Home',
             ),
             BottomNavigationBarItem(
               icon: Padding(
                 padding: EdgeInsets.only(bottom: 4),
-                child: Icon(Icons.kitchen_outlined),
+                child: Icon(Icons.receipt_long_outlined),
               ),
               activeIcon: Padding(
                 padding: EdgeInsets.only(bottom: 4),
-                child: Icon(Icons.kitchen),
-              ),
-              label: 'Containers',
-            ),
-            BottomNavigationBarItem(
-              icon: Padding(
-                padding: EdgeInsets.only(bottom: 4),
-                child: Icon(Icons.restaurant_menu_outlined),
-              ),
-              activeIcon: Padding(
-                padding: EdgeInsets.only(bottom: 4),
-                child: Icon(Icons.restaurant_menu),
+                child: Icon(Icons.receipt_long),
               ),
               label: 'Recipes',
+            ),
+            BottomNavigationBarItem(
+              icon: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Icon(Icons.settings_outlined),
+              ),
+              activeIcon: Padding(
+                padding: EdgeInsets.only(bottom: 4),
+                child: Icon(Icons.settings),
+              ),
+              label: 'Settings',
             ),
           ],
         ),

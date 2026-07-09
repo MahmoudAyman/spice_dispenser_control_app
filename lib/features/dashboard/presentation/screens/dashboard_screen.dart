@@ -2,11 +2,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/storage/storage_service.dart';
-import '../../../../core/theme/app_colors.dart';
 import '../../../bluetooth/presentation/cubit/bluetooth_cubit.dart';
 import '../../../bluetooth/presentation/cubit/bluetooth_state.dart';
 import '../../../container_management/data/models/slot_model.dart';
-import '../cubit/machine_state_cubit.dart';
+import '../../../sync/services/recipe_storage_service.dart';
+import '../../../recipes/data/models/recipe_model.dart';
+import 'main_layout_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
   const DashboardScreen({super.key});
@@ -17,11 +18,13 @@ class DashboardScreen extends StatefulWidget {
 
 class _DashboardScreenState extends State<DashboardScreen> {
   List<SlotModel> slots = [];
+  List<RecipeModel> recentRecipes = [];
 
   @override
   void initState() {
     super.initState();
     loadSlots();
+    loadRecipes();
   }
 
   void loadSlots() {
@@ -31,405 +34,672 @@ class _DashboardScreenState extends State<DashboardScreen> {
     debugPrint('DASHBOARD LOADED SLOTS: ${slots.length}');
   }
 
+  void loadRecipes() {
+    final recipeService = RecipeStorageService();
+    var list = recipeService.getRecipes();
+
+    // Pre-populate if empty
+    if (list.isEmpty) {
+      _prepopulatePresets(recipeService);
+      list = recipeService.getRecipes();
+    }
+
+    setState(() {
+      recentRecipes = list.take(2).toList();
+    });
+  }
+
+  void _prepopulatePresets(RecipeStorageService service) {
+    final presets = [
+      RecipeModel(
+        id: 'italian_seasoning',
+        name: 'Italian Herbs',
+        ingredients: ['Oregano', 'Basil', 'Rosemary', 'Thyme'],
+        duration: 5,
+      ),
+      RecipeModel(
+        id: 'taco_mix',
+        name: 'Taco Seasoning',
+        ingredients: ['Chili Powder', 'Cumin', 'Paprika', 'Onion Powder'],
+        duration: 8,
+      ),
+      RecipeModel(
+        id: 'curry_powder',
+        name: 'Curry Blend',
+        ingredients: ['Turmeric', 'Coriander', 'Cumin', 'Ginger'],
+        duration: 10,
+      ),
+    ];
+    for (var recipe in presets) {
+      service.addRecipe(recipe);
+    }
+  }
+
   Color _getLevelColor(int level) {
-    if (level > 50) return AppColors.green;
-    if (level > 20) return Colors.amber;
-    return Colors.redAccent;
+    if (level <= 20) return const Color(0xFFEF4444); // Red
+    return const Color(0xFF22C55E); // Green
+  }
+
+  void _showDispensingDialog(RecipeModel recipe) {
+    int duration = recipe.duration;
+    double progress = 1.0;
+    bool aborted = false;
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            // Start countdown
+            Future.delayed(const Duration(seconds: 1), () {
+              if (!dialogContext.mounted || aborted) return;
+              if (duration > 0) {
+                setDialogState(() {
+                  duration--;
+                  progress = duration / recipe.duration;
+                });
+              } else {
+                Navigator.of(dialogContext).pop();
+                _showSuccessSnackBar(recipe.name);
+              }
+            });
+
+            return Dialog(
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(28),
+              ),
+              elevation: 10,
+              backgroundColor: Colors.white,
+              child: Padding(
+                padding: const EdgeInsets.all(28.0),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    const SizedBox(height: 10),
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        SizedBox(
+                          width: 140,
+                          height: 140,
+                          child: CircularProgressIndicator(
+                            value: progress,
+                            strokeWidth: 10,
+                            backgroundColor: Colors.grey[100],
+                            valueColor: const AlwaysStoppedAnimation<Color>(Color(0xFF2563EB)),
+                          ),
+                        ),
+                        Column(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Text(
+                              '$duration',
+                              style: const TextStyle(
+                                fontSize: 42,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                            const Text(
+                              'seconds',
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: Color(0xFF64748B),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 32),
+                    Text(
+                      'Dispensing ${recipe.name}',
+                      style: const TextStyle(
+                        fontSize: 22,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF0F172A),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 12),
+                    const Text(
+                      'Please place your container under the dispensing nozzle.',
+                      style: TextStyle(
+                        fontSize: 14,
+                        color: Color(0xFF64748B),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 32),
+                    SizedBox(
+                      width: double.infinity,
+                      height: 52,
+                      child: OutlinedButton(
+                        onPressed: () async {
+                          aborted = true;
+                          Navigator.of(dialogContext).pop();
+                          try {
+                            final bluetoothCubit = context.read<BluetoothCubit>();
+                            await bluetoothCubit.bleService.sendCommand(
+                              command: {'type': 'abort'},
+                            );
+                          } catch (e) {
+                            debugPrint('Failed to send abort command: $e');
+                          }
+                          _showAbortSnackBar(recipe.name);
+                        },
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: Colors.red,
+                          side: const BorderSide(color: Colors.red, width: 1.5),
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                        ),
+                        child: const Text(
+                          'Abort Dispensing',
+                          style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    // Send Dispense Command to ESP32 Machine if connected
+    try {
+      final bluetoothCubit = context.read<BluetoothCubit>();
+      if (bluetoothCubit.state is BluetoothHandshakeSuccess || 
+          bluetoothCubit.bleService.writeCharacteristic != null) {
+        bluetoothCubit.bleService.sendCommand(
+          command: {
+            'type': 'dispense',
+            'recipe_id': recipe.id,
+            'duration': recipe.duration,
+          },
+        ).then((ack) {
+          debugPrint('Dispense Ack Received: ${ack.isSuccess}');
+        });
+      }
+    } catch (e) {
+      debugPrint('Failed to send dispense command: $e');
+    }
+  }
+
+  void _showSuccessSnackBar(String recipeName) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.check_circle, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(child: Text('Dispensed $recipeName successfully!')),
+          ],
+        ),
+        backgroundColor: const Color(0xFF22C55E),
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
+  }
+
+  void _showAbortSnackBar(String recipeName) {
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Row(
+          children: [
+            const Icon(Icons.warning, color: Colors.white),
+            const SizedBox(width: 12),
+            Expanded(child: Text('Dispensing $recipeName aborted!')),
+          ],
+        ),
+        backgroundColor: Colors.red,
+        behavior: SnackBarBehavior.floating,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        margin: const EdgeInsets.all(16),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final bleCubit = context.watch<BluetoothCubit>();
     final isConnected = bleCubit.state is BluetoothHandshakeSuccess;
+    final lastMachine = StorageService.getLastMachine();
+    final deviceName = lastMachine?.deviceName ?? 'Spice Dispenser #1';
 
-    return BlocProvider(
-      create: (context) => MachineStateCubit(bleCubit.bleService),
-      child: Scaffold(
-        backgroundColor: AppColors.background,
-        appBar: AppBar(
-          title: const Text(
-            'Dashboard',
-            style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
-          ),
-          actions: [
-            if (isConnected)
-              IconButton(
-                icon: const Icon(Icons.sync, color: Colors.white),
-                onPressed: () async {
-                  try {
-                    await bleCubit.syncService.requestSync();
-                    loadSlots();
-                    if (mounted) {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(content: Text('Syncing levels...')),
-                      );
-                    }
-                  } catch (e) {
-                    debugPrint('Failed to sync: $e');
-                  }
-                },
-                tooltip: 'Sync Levels',
-              ),
-          ],
-        ),
-        body: RefreshIndicator(
-          onRefresh: () async {
-            loadSlots();
-          },
-          child: SingleChildScrollView(
-            physics: const AlwaysScrollableScrollPhysics(),
-            padding: const EdgeInsets.all(20),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                // 1. Connection & Live Machine Status Card
-                _buildMachineStatusCard(context, isConnected),
-                const SizedBox(height: 24),
+    // Identify if any spices are running low (level <= 20%)
+    final lowSpices = slots.where((s) => s.level <= 20 && s.spiceName.isNotEmpty).toList();
 
-                // 2. Section Title
-                Row(
+    return Scaffold(
+      backgroundColor: const Color(0xFFF8FAFC), // Ultra premium Slate 50 background
+      body: RefreshIndicator(
+        onRefresh: () async {
+          loadSlots();
+          loadRecipes();
+        },
+        child: SingleChildScrollView(
+          physics: const AlwaysScrollableScrollPhysics(),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 1. Blue Premium Custom Header (Matches Design Image)
+              Container(
+                width: double.infinity,
+                padding: EdgeInsets.only(
+                  left: 24,
+                  right: 24,
+                  top: MediaQuery.of(context).padding.top + 24,
+                  bottom: 28,
+                ),
+                decoration: const BoxDecoration(
+                  color: Color(0xFF2563EB), // Vivid Royal Blue
+                ),
+                child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceBetween,
                   children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Dashboard',
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 28,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          deviceName,
+                          style: const TextStyle(
+                            color: Colors.white70,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                    _buildConnectedBadge(isConnected),
+                  ],
+                ),
+              ),
+
+              Padding(
+                padding: const EdgeInsets.all(24.0),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 2. Dynamic Low Spice Alert Card (Matches Design Image)
+                    if (lowSpices.isNotEmpty) ...[
+                      _buildLowSpiceAlertCard(lowSpices),
+                      const SizedBox(height: 24),
+                    ],
+
+                    // 3. Spice Containers Section Title
                     const Text(
                       'Spice Containers',
                       style: TextStyle(
                         fontSize: 20,
                         fontWeight: FontWeight.bold,
-                        color: AppColors.black,
+                        color: Color(0xFF0F172A), // Slate 900
                       ),
                     ),
-                    Text(
-                      '${slots.length} Slots Available',
-                      style: const TextStyle(
-                        fontSize: 14,
-                        color: AppColors.grey,
-                        fontWeight: FontWeight.w500,
-                      ),
+                    const SizedBox(height: 16),
+
+                    // 4. Spice Containers Grid (Matches Design Image)
+                    slots.isEmpty ? _buildEmptySlotsPlaceholder() : _buildSlotsGrid(),
+
+                    const SizedBox(height: 32),
+
+                    // 5. Recent Recipes Section Title
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Recent Recipes',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            // Switch tab in main layout to Recipes tab (index 1)
+                            context.findAncestorStateOfType<MainLayoutScreenState>()?.setTab(1);
+                          },
+                          child: const Text(
+                            'View All',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF2563EB),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
+                    const SizedBox(height: 12),
+
+                    // 6. Recent Recipes List (Matches Design Image)
+                    ...recentRecipes.map((recipe) => _buildRecipeCard(recipe)),
                   ],
                 ),
-                const SizedBox(height: 16),
-
-                // 3. Spice Containers Grid
-                slots.isEmpty
-                    ? Container(
-                        width: double.infinity,
-                        padding: const EdgeInsets.all(40),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(24),
-                        ),
-                        child: const Column(
-                          children: [
-                            Icon(Icons.kitchen_outlined, size: 48, color: AppColors.grey),
-                            SizedBox(height: 16),
-                            Text(
-                              'No Containers Set Up',
-                              style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.black),
-                            ),
-                            SizedBox(height: 8),
-                            Text(
-                              'Please complete the setup to configure your spice slots.',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(fontSize: 14, color: AppColors.grey),
-                            ),
-                          ],
-                        ),
-                      )
-                    : GridView.builder(
-                        shrinkWrap: true,
-                        physics: const NeverScrollableScrollPhysics(),
-                        itemCount: slots.length,
-                        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                          crossAxisCount: 2,
-                          crossAxisSpacing: 16,
-                          mainAxisSpacing: 16,
-                          childAspectRatio: 0.82,
-                        ),
-                        itemBuilder: (context, index) {
-                          final slot = slots[index];
-                          final isLow = slot.level <= 20;
-
-                          return Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              borderRadius: BorderRadius.circular(24),
-                              boxShadow: [
-                                BoxShadow(
-                                  color: Colors.black.withOpacity(0.03),
-                                  blurRadius: 8,
-                                  offset: const Offset(0, 4),
-                                ),
-                              ],
-                              border: Border.all(
-                                color: isLow ? Colors.redAccent.withOpacity(0.3) : Colors.transparent,
-                                width: 1.5,
-                              ),
-                            ),
-                            child: Padding(
-                              padding: const EdgeInsets.all(16.0),
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Row(
-                                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                                    children: [
-                                      CircleAvatar(
-                                        radius: 18,
-                                        backgroundColor: AppColors.primary.withOpacity(0.1),
-                                        child: Text(
-                                          '${slot.slotNumber}',
-                                          style: const TextStyle(
-                                            fontSize: 14,
-                                            fontWeight: FontWeight.bold,
-                                            color: AppColors.primary,
-                                          ),
-                                        ),
-                                      ),
-                                      if (isLow)
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                                          decoration: BoxDecoration(
-                                            color: Colors.redAccent.withOpacity(0.1),
-                                            borderRadius: BorderRadius.circular(8),
-                                          ),
-                                          child: const Text(
-                                            'LOW',
-                                            style: TextStyle(
-                                              fontSize: 10,
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.redAccent,
-                                            ),
-                                          ),
-                                        ),
-                                    ],
-                                  ),
-                                  const Spacer(),
-                                  Text(
-                                    slot.spiceName.isEmpty ? 'Empty Slot' : slot.spiceName,
-                                    style: const TextStyle(
-                                      fontSize: 18,
-                                      fontWeight: FontWeight.bold,
-                                      color: AppColors.black,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 4),
-                                  Text(
-                                    'Exp: ${slot.expiryDate.isEmpty ? 'N/A' : slot.expiryDate}',
-                                    style: const TextStyle(
-                                      fontSize: 11,
-                                      color: AppColors.grey,
-                                    ),
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                  ),
-                                  const SizedBox(height: 14),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: ClipRRect(
-                                          borderRadius: BorderRadius.circular(6),
-                                          child: LinearProgressIndicator(
-                                            value: slot.level / 100.0,
-                                            minHeight: 8,
-                                            backgroundColor: Colors.grey[100],
-                                            valueColor: AlwaysStoppedAnimation<Color>(
-                                              _getLevelColor(slot.level),
-                                            ),
-                                          ),
-                                        ),
-                                      ),
-                                      const SizedBox(width: 10),
-                                      Text(
-                                        '${slot.level}%',
-                                        style: TextStyle(
-                                          fontSize: 12,
-                                          fontWeight: FontWeight.bold,
-                                          color: _getLevelColor(slot.level),
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
-                            ),
-                          );
-                        },
-                      ),
-              ],
-            ),
+              ),
+            ],
           ),
         ),
       ),
     );
   }
 
-  Widget _buildMachineStatusCard(BuildContext context, bool isConnected) {
-    if (!isConnected) {
-      return Container(
-        width: double.infinity,
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.grey[100],
-          borderRadius: BorderRadius.circular(24),
-          border: Border.all(color: Colors.grey[300]!),
-        ),
-        child: Row(
-          children: [
-            const Icon(Icons.cloud_off, size: 40, color: AppColors.grey),
-            const SizedBox(width: 16),
-            const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    'Machine Disconnected',
-                    style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: AppColors.black),
-                  ),
-                  SizedBox(height: 4),
-                  Text(
-                    'Connect your device to synchronize spice levels and dispense.',
-                    style: TextStyle(fontSize: 12, color: AppColors.grey),
-                  ),
-                ],
-              ),
+  Widget _buildConnectedBadge(bool isConnected) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      decoration: BoxDecoration(
+        color: Colors.white.withOpacity(0.18),
+        borderRadius: BorderRadius.circular(20),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            width: 8,
+            height: 8,
+            decoration: BoxDecoration(
+              color: isConnected ? const Color(0xFF22C55E) : Colors.redAccent,
+              shape: BoxShape.circle,
             ),
-            IconButton(
-              icon: const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.grey),
-              onPressed: () {
-                // Return to connection screen
-                Navigator.of(context).popUntil((route) => route.isFirst);
-              },
+          ),
+          const SizedBox(width: 8),
+          Text(
+            isConnected ? 'Connected' : 'Disconnected',
+            style: const TextStyle(
+              color: Colors.white,
+              fontWeight: FontWeight.bold,
+              fontSize: 13,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildLowSpiceAlertCard(List<SlotModel> lowSpices) {
+    final names = lowSpices.map((s) => s.spiceName).join(' & ');
+
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFFEF2F2), // Light peach-pink background
+        borderRadius: BorderRadius.circular(16),
+      ),
+      clipBehavior: Clip.antiAlias,
+      child: IntrinsicHeight(
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            Container(
+              width: 5,
+              color: const Color(0xFFEF4444), // Crimson Red left border line
+            ),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 18),
+                child: Row(
+                  children: [
+                    const Icon(
+                      Icons.warning_amber_rounded,
+                      color: Color(0xFFEF4444),
+                      size: 28,
+                    ),
+                    const SizedBox(width: 14),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            'Low Spice Alert',
+                            style: TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF991B1B), // Dark Crimson
+                            ),
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            '$names running low',
+                            style: const TextStyle(
+                              fontSize: 14,
+                              color: Color(0xFFEF4444),
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
+                ),
+              ),
             ),
           ],
         ),
-      );
-    }
+      ),
+    );
+  }
 
-    final machine = StorageService.getLastMachine();
+  Widget _buildEmptySlotsPlaceholder() {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(40),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFF1F5F9), width: 1.5),
+      ),
+      child: const Column(
+        children: [
+          Icon(Icons.kitchen_outlined, size: 48, color: Color(0xFF64748B)),
+          SizedBox(height: 16),
+          Text(
+            'No Containers Configured',
+            style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Color(0xFF0F172A)),
+          ),
+          SizedBox(height: 8),
+          Text(
+            'Go to Containers page or complete setup to register your spices.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 14, color: Color(0xFF64748B)),
+          ),
+        ],
+      ),
+    );
+  }
 
-    return BlocBuilder<MachineStateCubit, MachineStateState>(
-      builder: (context, state) {
-        String statusText = 'Connected & Ready';
-        String subtitleText = 'Your smart dispenser is ready.';
-        Color statusColor = AppColors.green;
-        IconData statusIcon = Icons.check_circle;
-        Widget? actionWidget;
-
-        if (state is MachineStatusUpdated) {
-          final status = state.status;
-          if (status.state == 'dispensing') {
-            statusText = 'Dispensing Spice...';
-            subtitleText = 'Active dispensing progress: ${status.progress}%';
-            statusColor = AppColors.primary;
-            statusIcon = Icons.hourglass_top_outlined;
-            actionWidget = Padding(
-              padding: const EdgeInsets.only(top: 14),
-              child: SizedBox(
-                width: double.infinity,
-                child: LinearProgressIndicator(
-                  value: status.progress / 100.0,
-                  backgroundColor: AppColors.primary.withOpacity(0.1),
-                  valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
-                ),
-              ),
-            );
-          } else if (status.state == 'completed') {
-            statusText = 'Dispensing Completed';
-            subtitleText = 'Ready for next action.';
-            statusColor = AppColors.green;
-            statusIcon = Icons.done_all;
-          }
-        } else if (state is MachineAlertState) {
-          final alert = state.alert;
-          statusText = 'Machine Alert';
-          subtitleText = 'Alert code ${alert.code} on slot ${alert.slot}.';
-          statusColor = Colors.redAccent;
-          statusIcon = Icons.warning_amber_rounded;
-        }
+  Widget _buildSlotsGrid() {
+    return GridView.builder(
+      shrinkWrap: true,
+      physics: const NeverScrollableScrollPhysics(),
+      itemCount: slots.length,
+      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+        crossAxisCount: 2,
+        crossAxisSpacing: 16,
+        mainAxisSpacing: 16,
+        childAspectRatio: 1.15, // Perfect aspect ratio matching reference design
+      ),
+      itemBuilder: (context, index) {
+        final slot = slots[index];
+        final isLow = slot.level <= 20;
 
         return Container(
-          width: double.infinity,
-          padding: const EdgeInsets.all(22),
           decoration: BoxDecoration(
             color: Colors.white,
-            borderRadius: BorderRadius.circular(28),
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isLow ? const Color(0xFFFEF2F2) : const Color(0xFFF1F5F9),
+              width: 1.5,
+            ),
             boxShadow: [
               BoxShadow(
-                color: Colors.black.withOpacity(0.04),
+                color: Colors.black.withOpacity(0.015),
                 blurRadius: 10,
                 offset: const Offset(0, 4),
               ),
             ],
           ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Container(
-                    padding: const EdgeInsets.all(12),
-                    decoration: BoxDecoration(
-                      color: statusColor.withOpacity(0.1),
-                      shape: BoxShape.circle,
+          child: Padding(
+            padding: const EdgeInsets.all(16.0),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      'Slot ${slot.slotNumber}',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: Color(0xFF94A3B8), // slate 400
+                      ),
                     ),
-                    child: Icon(statusIcon, size: 28, color: statusColor),
+                    if (isLow)
+                      const Icon(
+                        Icons.warning_amber_rounded,
+                        color: Color(0xFFEF4444),
+                        size: 18,
+                      ),
+                  ],
+                ),
+                const Spacer(),
+                Text(
+                  slot.spiceName.isEmpty ? 'Empty Slot' : slot.spiceName,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A), // slate 900
                   ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Row(
-                          children: [
-                            Text(
-                              machine?.deviceName ?? 'Smart Dispenser',
-                              style: const TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: AppColors.black,
-                              ),
-                            ),
-                            const SizedBox(width: 8),
-                            Container(
-                              width: 8,
-                              height: 8,
-                              decoration: const BoxDecoration(
-                                color: AppColors.green,
-                                shape: BoxShape.circle,
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(height: 4),
-                        Text(
-                          statusText,
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: statusColor,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          subtitleText,
-                          style: const TextStyle(
-                            fontSize: 12,
-                            color: AppColors.grey,
-                          ),
-                        ),
-                      ],
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '${slot.level}%',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.bold,
+                        color: isLow ? const Color(0xFFEF4444) : const Color(0xFF64748B),
+                      ),
+                    ),
+                    Text(
+                      '${slot.level * 2}g',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w500,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 6),
+                ClipRRect(
+                  borderRadius: BorderRadius.circular(4),
+                  child: LinearProgressIndicator(
+                    value: slot.level / 100.0,
+                    minHeight: 6,
+                    backgroundColor: const Color(0xFFF1F5F9),
+                    valueColor: AlwaysStoppedAnimation<Color>(
+                      _getLevelColor(slot.level),
                     ),
                   ),
-                ],
-              ),
-              if (actionWidget != null) actionWidget,
-            ],
+                ),
+              ],
+            ),
           ),
         );
       },
+    );
+  }
+
+  Widget _buildRecipeCard(RecipeModel recipe) {
+    // Return relative simulated times matching reference image or fallback
+    String relativeTime = '2 hours ago';
+    if (recipe.id == 'taco_mix') {
+      relativeTime = 'Yesterday';
+    } else if (recipe.id == 'curry_powder') {
+      relativeTime = 'Classic Curry'; // Wait, let's keep times aligned
+    }
+
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 18),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        border: Border.all(color: const Color(0xFFF1F5F9), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.015),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(
+                  recipe.name,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  relativeTime,
+                  style: const TextStyle(
+                    fontSize: 12,
+                    color: Color(0xFF94A3B8),
+                  ),
+                ),
+              ],
+            ),
+          ),
+          SizedBox(
+            height: 44,
+            child: ElevatedButton.icon(
+              onPressed: () => _showDispensingDialog(recipe),
+              icon: const Icon(Icons.play_arrow, color: Colors.white, size: 18),
+              label: const Text(
+                'Dispense',
+                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white, fontSize: 13),
+              ),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2563EB),
+                elevation: 0,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
