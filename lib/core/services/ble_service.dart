@@ -242,7 +242,7 @@ class BleService {
 
   /// HANDSHAKE
 
-  Future<bool> sendHandshake({
+  Future<AckResponse?> sendHandshake({
     required String uuid,
   }) async {
 
@@ -253,7 +253,7 @@ class BleService {
         'WRITE CHARACTERISTIC IS NULL',
       );
 
-      return false;
+      return null;
     }
 
     final command =
@@ -290,7 +290,7 @@ class BleService {
         'ACK STATUS: ${ack.status}',
       );
 
-      return ack.isSuccess;
+      return ack;
 
     } catch (e) {
 
@@ -298,7 +298,7 @@ class BleService {
         'Handshake Error: $e',
       );
 
-      return false;
+      return null;
     }
   }
 
@@ -309,6 +309,8 @@ class BleService {
 
     required Map<String, dynamic>
     command,
+
+    Duration timeout = const Duration(seconds: 3),
   }) async {
 
     if (writeCharacteristic
@@ -321,6 +323,33 @@ class BleService {
 
     return await protocolService
         .sendCommand(
+      writeCharacteristic:
+      writeCharacteristic!,
+
+      command: command,
+
+      timeout: timeout,
+    );
+  }
+
+  /// WRITE RAW COMMAND (NO ACK EXPECTED)
+
+  Future<void>
+  writeCommand({
+    required Map<String, dynamic>
+    command,
+  }) async {
+
+    if (writeCharacteristic
+        == null) {
+
+      throw Exception(
+        'Write characteristic is null',
+      );
+    }
+
+    await protocolService
+        .writeCommand(
       writeCharacteristic:
       writeCharacteristic!,
 

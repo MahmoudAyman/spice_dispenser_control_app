@@ -99,6 +99,7 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
             'type': 'setup_slot_name',
             'name': registerName,
           },
+          timeout: const Duration(seconds: 5),
         );
 
         debugPrint('ONBOARDING SYNC ACK RECEIVED: Status: ${ack.status}, Success: ${ack.isSuccess}');

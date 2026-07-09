@@ -116,13 +116,13 @@ class BluetoothCubit
 
       /// HANDSHAKE
 
-      final success =
+      final ack =
       await bleService
           .sendHandshake(
         uuid: uuid,
       );
 
-      if (success) {
+      if (ack != null && ack.isSuccess) {
 
         /// SAVE MACHINE
 
@@ -144,12 +144,18 @@ class BluetoothCubit
 
         syncService.startListening();
 
-        /// REQUEST PHYSICAL MANIFEST (SLOTS MAPPING)
+        /// REQUEST PHYSICAL MANIFEST ONLY IF CONFIGURED (READY)
 
-        try {
-          await syncService.requestManifest();
-        } catch (e) {
-          debugPrint('Failed to sync physical manifest on handshake: $e');
+        final isConfigured = ack.status.toLowerCase() == 'ready' || ack.newDevice == false;
+
+        if (isConfigured) {
+          debugPrint('MACHINE IS CONFIGURED. Triggering manifest sync asynchronously...');
+          // Trigger manifest sync in background, without awaiting, to prevent UI freeze/blocking
+          syncService.requestManifest().catchError((e) {
+            debugPrint('Failed to request manifest in background: $e');
+          });
+        } else {
+          debugPrint('MACHINE IS UNCONFIGURED. Skipping manifest sync and routing to Onboarding Setup.');
         }
 
         emit(
@@ -270,24 +276,30 @@ class BluetoothCubit
 
       /// HANDSHAKE
 
-      final success =
+      final ack =
       await bleService
           .sendHandshake(
         uuid: uuid,
       );
 
-      if (success) {
+      if (ack != null && ack.isSuccess) {
 
         /// START SYNC LISTENERS
 
         syncService.startListening();
 
-        /// REQUEST PHYSICAL MANIFEST (SLOTS MAPPING)
+        /// REQUEST PHYSICAL MANIFEST ONLY IF CONFIGURED (READY)
 
-        try {
-          await syncService.requestManifest();
-        } catch (e) {
-          debugPrint('Failed to sync physical manifest on handshake: $e');
+        final isConfigured = ack.status.toLowerCase() == 'ready' || ack.newDevice == false;
+
+        if (isConfigured) {
+          debugPrint('MACHINE IS CONFIGURED. Triggering manifest sync asynchronously...');
+          // Trigger manifest sync in background, without awaiting, to prevent UI freeze/blocking
+          syncService.requestManifest().catchError((e) {
+            debugPrint('Failed to request manifest in background: $e');
+          });
+        } else {
+          debugPrint('MACHINE IS UNCONFIGURED. Skipping manifest sync and routing to Onboarding Setup.');
         }
 
         emit(

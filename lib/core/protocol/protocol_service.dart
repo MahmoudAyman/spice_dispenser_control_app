@@ -226,6 +226,8 @@ class ProtocolService {
 
     required Map<String, dynamic>
     command,
+
+    Duration timeout = const Duration(seconds: 3),
   }) async {
 
     final jsonString =
@@ -280,7 +282,7 @@ class ProtocolService {
     }
 
     return completer.future.timeout(
-      const Duration(seconds: 3),
+      timeout,
 
       onTimeout: () {
 
@@ -289,6 +291,44 @@ class ProtocolService {
         );
       },
     );
+  }
+
+  /// WRITE COMMAND (WITHOUT WAITING FOR ACK)
+
+  Future<void> writeCommand({
+    required BluetoothCharacteristic
+    writeCharacteristic,
+
+    required Map<String, dynamic>
+    command,
+  }) async {
+
+    final jsonString =
+    jsonEncode(command);
+
+    print(
+      'WRITING COMMAND: $jsonString',
+    );
+
+    final packets =
+    PacketManager.splitPacket(
+      jsonString,
+    );
+
+    for (List<int> packet
+    in packets) {
+
+      print(
+        'WRITING PACKET: $packet',
+      );
+
+      await writeCharacteristic
+          .write(
+        packet,
+
+        withoutResponse: false,
+      );
+    }
   }
 
   /// DISPOSE

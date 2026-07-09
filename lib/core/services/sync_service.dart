@@ -42,14 +42,14 @@ class SyncService {
   /// REQUEST LEVELS
   Future<void> requestSync() async {
     final command = GetLevelsCommand();
-    await bleService.sendCommand(
+    await bleService.writeCommand(
       command: command.toJson(),
     );
   }
 
   /// REQUEST MANIFEST (SLOTS MAPPING)
   Future<void> requestManifest() async {
-    await bleService.sendCommand(
+    await bleService.writeCommand(
       command: {'type': 'get_manifest'},
     );
   }
