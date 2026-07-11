@@ -8,8 +8,8 @@ import '../../../../../core/services/uuid_service.dart';
 
 import '../../../../../core/storage/storage_service.dart';
 
-import '../../../dashboard/presentation/screens/dashboard_screen.dart';
 
+import '../../../navigation/presentation/screens/bottom_navigation_screen.dart';
 import '../../../setup/presentation/screens/setup_welcome_screen.dart';
 
 import '../cubit/bluetooth_cubit.dart';
@@ -55,7 +55,7 @@ class ConnectionScreen
 
                 MaterialPageRoute(
                   builder: (_) =>
-                  const DashboardScreen(),
+                  const BottomNavigationScreen(),
                 ),
               );
 

@@ -1,9 +1,6 @@
 class StatusResponse {
-
   final String state;
-
-  final int? activeRecipe;
-
+  final String? activeRecipe;
   final int progress;
 
   StatusResponse({
@@ -15,16 +12,18 @@ class StatusResponse {
   factory StatusResponse.fromJson(
       Map<String, dynamic> json,
       ) {
-
     return StatusResponse(
-      state:
-      json['state'] ?? 'idle',
-
-      progress:
-      json['progress'] ?? 0,
-
-      activeRecipe:
-      json['active_recipe'],
+      state: json['state'] ?? 'idle',
+      progress: json['progress'] ?? 0,
+      activeRecipe: json['active_recipe']?.toString(),
     );
+  }
+
+  Map<String, dynamic> toJson() {
+    return {
+      'state': state,
+      'progress': progress,
+      'active_recipe': activeRecipe,
+    };
   }
 }

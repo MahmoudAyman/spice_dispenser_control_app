@@ -8,47 +8,36 @@ import '../widgets/setup_step_indicator.dart';
 
 import 'setup_complete_screen.dart';
 
-class SetupSlotsScreen
-    extends StatefulWidget {
-
+class SetupSlotsScreen extends StatefulWidget {
   const SetupSlotsScreen({
     super.key,
   });
 
   @override
-  State<SetupSlotsScreen>
-  createState() =>
+  State<SetupSlotsScreen> createState() =>
       _SetupSlotsScreenState();
 }
 
 class _SetupSlotsScreenState
-    extends State<
-        SetupSlotsScreen> {
-
+    extends State<SetupSlotsScreen> {
   final List<TextEditingController>
-  spiceControllers =
-  List.generate(
+  spiceControllers = List.generate(
     6,
-        (index) =>
-        TextEditingController(),
+        (_) => TextEditingController(),
   );
 
   final List<TextEditingController>
-  expiryControllers =
-  List.generate(
+  expiryControllers = List.generate(
     6,
-        (index) =>
-        TextEditingController(),
+        (_) => TextEditingController(),
   );
 
   bool valid = false;
 
   void validateFields() {
-
     bool allFilled = true;
 
     for (int i = 0; i < 6; i++) {
-
       if (spiceControllers[i]
           .text
           .trim()
@@ -57,7 +46,6 @@ class _SetupSlotsScreenState
               .text
               .trim()
               .isEmpty) {
-
         allFilled = false;
       }
     }
@@ -70,7 +58,6 @@ class _SetupSlotsScreenState
   Future<void> pickDate(
       int index,
       ) async {
-
     final date =
     await showDatePicker(
       context: context,
@@ -80,46 +67,46 @@ class _SetupSlotsScreenState
     );
 
     if (date != null) {
-
-      expiryControllers[index]
-          .text =
+      expiryControllers[index].text =
       '${date.day}/${date.month}/${date.year}';
 
       validateFields();
     }
   }
 
-  Future<void> saveSlots()
-  async {
-
-    final slots =
-    List.generate(
+  Future<void> saveSlots() async {
+    final slots = List.generate(
       6,
-          (index) =>
-          SlotModel(
-            slotNumber:
-            index + 1,
+          (index) => SlotModel(
+        slotNumber: index + 1,
 
-            spiceName:
-            spiceControllers[index]
-                .text
-                .trim(),
+        spiceName:
+        spiceControllers[index]
+            .text
+            .trim(),
 
-            expiryDate:
-            expiryControllers[index]
-                .text
-                .trim(),
+        expiryDate:
+        expiryControllers[index]
+            .text
+            .trim(),
 
-            level: 100,
-          ),
+        level: 100,
+
+        /// السعة الافتراضية بالجرام
+        capacity: 200,
+
+        /// أول مرة مفيش تاريخ refill
+        lastRefillDate: '',
+      ),
     );
 
     debugPrint(
       'SAVING SLOTS...',
     );
 
-    await StorageService
-        .saveSlots(slots);
+    await StorageService.saveSlots(
+      slots,
+    );
 
     final savedSlots =
     StorageService.getSlots();
@@ -130,9 +117,10 @@ class _SetupSlotsScreenState
 
     for (final slot
     in savedSlots) {
-
       debugPrint(
-        'Slot ${slot.slotNumber}: ${slot.spiceName}',
+        'Slot ${slot.slotNumber}: '
+            '${slot.spiceName} '
+            'Level=${slot.level}%',
       );
     }
 
@@ -140,7 +128,6 @@ class _SetupSlotsScreenState
 
     Navigator.push(
       context,
-
       MaterialPageRoute(
         builder: (_) =>
         const SetupCompleteScreen(),
@@ -149,8 +136,24 @@ class _SetupSlotsScreenState
   }
 
   @override
-  Widget build(BuildContext context) {
+  void dispose() {
+    for (final controller
+    in spiceControllers) {
+      controller.dispose();
+    }
 
+    for (final controller
+    in expiryControllers) {
+      controller.dispose();
+    }
+
+    super.dispose();
+  }
+
+  @override
+  Widget build(
+      BuildContext context,
+      ) {
     return Scaffold(
       backgroundColor:
       const Color(0xFFF4F7FB),
@@ -165,7 +168,6 @@ class _SetupSlotsScreenState
 
         title: const Text(
           'Initial Setup',
-
           style: TextStyle(
             color: Colors.white,
             fontWeight:
@@ -180,49 +182,52 @@ class _SetupSlotsScreenState
 
         child: Column(
           children: [
-
-            const SizedBox(height: 20),
+            const SizedBox(
+              height: 20,
+            ),
 
             const SetupStepIndicator(
               currentStep: 2,
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(
+              height: 24,
+            ),
 
             Expanded(
-              child: ListView.builder(
+              child:
+              ListView.builder(
                 itemCount: 6,
 
                 itemBuilder:
                     (context, index) {
-
                   return Container(
                     margin:
-                    const EdgeInsets.only(
+                    const EdgeInsets
+                        .only(
                       bottom: 20,
                     ),
 
                     padding:
-                    const EdgeInsets.all(
-                      20,
-                    ),
+                    const EdgeInsets
+                        .all(20),
 
                     decoration:
                     BoxDecoration(
-                      color: Colors.white,
+                      color:
+                      Colors.white,
 
                       borderRadius:
-                      BorderRadius.circular(
+                      BorderRadius
+                          .circular(
                         28,
                       ),
                     ),
 
                     child: Column(
                       children: [
-
                         Row(
                           children: [
-
                             CircleAvatar(
                               radius: 26,
 
@@ -284,12 +289,14 @@ class _SetupSlotsScreenState
                             border:
                             OutlineInputBorder(
                               borderRadius:
-                              BorderRadius.circular(
+                              BorderRadius
+                                  .circular(
                                 18,
                               ),
 
                               borderSide:
-                              BorderSide.none,
+                              BorderSide
+                                  .none,
                             ),
                           ),
                         ),
@@ -306,7 +313,9 @@ class _SetupSlotsScreenState
                           readOnly: true,
 
                           onTap: () {
-                            pickDate(index);
+                            pickDate(
+                              index,
+                            );
                           },
 
                           decoration:
@@ -330,12 +339,14 @@ class _SetupSlotsScreenState
                             border:
                             OutlineInputBorder(
                               borderRadius:
-                              BorderRadius.circular(
+                              BorderRadius
+                                  .circular(
                                 18,
                               ),
 
                               borderSide:
-                              BorderSide.none,
+                              BorderSide
+                                  .none,
                             ),
                           ),
                         ),
@@ -347,18 +358,23 @@ class _SetupSlotsScreenState
             ),
 
             SizedBox(
-              width: double.infinity,
+              width:
+              double.infinity,
+
               height: 60,
 
-              child: ElevatedButton(
+              child:
+              ElevatedButton(
                 style:
-                ElevatedButton.styleFrom(
+                ElevatedButton
+                    .styleFrom(
                   backgroundColor:
                   valid
                       ? const Color(
                     0xFF2563EB,
                   )
-                      : Colors.grey,
+                      : Colors
+                      .grey,
                 ),
 
                 onPressed:
@@ -370,8 +386,11 @@ class _SetupSlotsScreenState
                   'Continue',
 
                   style: TextStyle(
-                    color: Colors.white,
+                    color:
+                    Colors.white,
+
                     fontSize: 18,
+
                     fontWeight:
                     FontWeight.bold,
                   ),

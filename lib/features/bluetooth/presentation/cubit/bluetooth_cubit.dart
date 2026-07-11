@@ -340,9 +340,7 @@ class BluetoothCubit
 
   @override
   Future<void> close() {
-
-    bleService.dispose();
-
+    // لا تعمل dispose للـ BleService هنا
     return super.close();
   }
 }

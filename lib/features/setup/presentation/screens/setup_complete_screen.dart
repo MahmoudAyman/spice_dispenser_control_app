@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../../../../core/storage/storage_service.dart';
 import '../../../dashboard/presentation/screens/dashboard_screen.dart';
+import '../../../navigation/presentation/screens/bottom_navigation_screen.dart';
 import '../widgets/setup_step_indicator.dart';
 
 class SetupCompleteScreen extends StatefulWidget {
@@ -45,7 +46,7 @@ class _SetupCompleteScreenState
       context,
       MaterialPageRoute(
         builder: (_) =>
-        const DashboardScreen(),
+        const BottomNavigationScreen(),
       ),
           (route) => false,
     );

@@ -34,4 +34,7 @@ class StorageKeys {
 
   static const String machineHash =
       'machine_hash';
+
+  static const String lowLevelThreshold =
+      'low_level_threshold';
 }
