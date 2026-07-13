@@ -1,5 +1,5 @@
 import '../../data/models/ble_device_model.dart';
-import '../../../../../core/services/uuid_service.dart';
+
 abstract class BluetoothState {}
 
 class BluetoothInitial extends BluetoothState {}
@@ -16,7 +16,11 @@ class BluetoothConnecting extends BluetoothState {}
 
 class BluetoothConnected extends BluetoothState {}
 
-class BluetoothHandshakeSuccess extends BluetoothState {}
+class BluetoothHandshakeSuccess extends BluetoothState {
+  final bool isConfigured;
+
+  BluetoothHandshakeSuccess({required this.isConfigured});
+}
 
 class BluetoothHandshakeFailed extends BluetoothState {}
 

@@ -219,22 +219,22 @@ class StorageService {
   /// SAVE SLOTS
 
   static Future<void> saveSlots(
-      List<SlotModel> slots,
-      ) async {
+    List<SlotModel> slots, {
+    String? macAddress,
+  }) async {
+    final mac = macAddress ?? getLastMachine()?.deviceId;
+    final prefix = mac != null ? '${mac}_' : '';
 
-    final data =
-    slots.map(
-          (slot) => slot.toJson(),
-    ).toList();
+    final data = slots.map((slot) => slot.toJson()).toList();
 
     await slotsBox.put(
-      'slots',
+      '${prefix}slots',
       data,
     );
 
     for (var slot in slots) {
       await slotsBox.put(
-        slot.slotNumber,
+        '${prefix}${slot.slotNumber}',
         slot.toJson(),
       );
     }
@@ -242,18 +242,24 @@ class StorageService {
 
   /// GET SLOTS
 
-  static List<SlotModel> getSlots() {
+  static List<SlotModel> getSlots({String? macAddress}) {
+    final mac = macAddress ?? getLastMachine()?.deviceId;
+    final prefix = mac != null ? '${mac}_' : '';
 
     final slots = <SlotModel>[];
     for (var key in slotsBox.keys) {
-      if (key is int) {
-        final val = slotsBox.get(key);
-        if (val != null) {
-          slots.add(
-            SlotModel.fromJson(
-              Map<String, dynamic>.from(val),
-            ),
-          );
+      if (key is String && key.startsWith(prefix)) {
+        final suffix = key.substring(prefix.length);
+        final slotNumber = int.tryParse(suffix);
+        if (slotNumber != null) {
+          final val = slotsBox.get(key);
+          if (val != null) {
+            slots.add(
+              SlotModel.fromJson(
+                Map<String, dynamic>.from(val),
+              ),
+            );
+          }
         }
       }
     }
@@ -263,24 +269,35 @@ class StorageService {
       return slots;
     }
 
-    final data =
-    slotsBox.get('slots');
+    final data = slotsBox.get('${prefix}slots');
 
     if (data == null) {
       return [];
     }
 
-    return List<SlotModel>.from(
-
+    final parsed = List<SlotModel>.from(
       (data as List).map(
-
-            (item) => SlotModel.fromJson(
-
+        (item) => SlotModel.fromJson(
           Map<String, dynamic>.from(item),
-
         ),
       ),
     );
+    parsed.sort((a, b) => a.slotNumber.compareTo(b.slotNumber));
+    return parsed;
+  }
+
+  /// CLEAR SLOTS FOR A SPECIFIC MACHINE MAC
+  static Future<void> clearSlotsForMachine(String macAddress) async {
+    final prefix = '${macAddress}_';
+    final keysToDelete = <dynamic>[];
+    for (var key in slotsBox.keys) {
+      if (key is String && key.startsWith(prefix)) {
+        keysToDelete.add(key);
+      }
+    }
+    for (var key in keysToDelete) {
+      await slotsBox.delete(key);
+    }
   }
 
   /// CLEAR STORAGE

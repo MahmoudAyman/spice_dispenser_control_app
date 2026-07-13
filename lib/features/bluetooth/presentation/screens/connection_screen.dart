@@ -26,18 +26,14 @@ class ConnectionScreen extends StatelessWidget {
     return BlocListener<BluetoothCubit, BluetoothState>(
       listener: (context, state) {
         if (state is BluetoothHandshakeSuccess) {
-          final initialized = StorageService.isInitialized();
-
-          if (initialized) {
+          if (state.isConfigured) {
             Navigator.pushReplacement(
               context,
-
               MaterialPageRoute(builder: (_) => const MainLayoutScreen()),
             );
           } else {
             Navigator.pushReplacement(
               context,
-
               MaterialPageRoute(builder: (_) => const SetupWelcomeScreen()),
             );
           }

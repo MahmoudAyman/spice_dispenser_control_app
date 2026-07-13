@@ -149,17 +149,20 @@ class BluetoothCubit
         final isConfigured = ack.status.toLowerCase() == 'ready' || ack.newDevice == false;
 
         if (isConfigured) {
-          debugPrint('MACHINE IS CONFIGURED. Triggering manifest sync asynchronously...');
-          // Trigger manifest sync in background, without awaiting, to prevent UI freeze/blocking
-          syncService.requestManifest().catchError((e) {
-            debugPrint('Failed to request manifest in background: $e');
+          debugPrint('MACHINE IS CONFIGURED. Triggering manifest sync and level poller asynchronously...');
+          // Trigger manifest sync and immediately after, request spice levels
+          syncService.requestManifest().then((_) {
+            syncService.requestSync(); // Immediate levels request to clear any old cached dashboard values!
+          }).catchError((e) {
+            debugPrint('Failed to request manifest/levels in background: $e');
           });
         } else {
-          debugPrint('MACHINE IS UNCONFIGURED. Skipping manifest sync and routing to Onboarding Setup.');
+          debugPrint('MACHINE IS UNCONFIGURED. Clearing old slots cache and routing to Onboarding Setup.');
+          await StorageService.clearSlotsForMachine(bleDevice.device.remoteId.str);
         }
 
         emit(
-          BluetoothHandshakeSuccess(),
+          BluetoothHandshakeSuccess(isConfigured: isConfigured),
         );
 
       } else {
@@ -293,17 +296,20 @@ class BluetoothCubit
         final isConfigured = ack.status.toLowerCase() == 'ready' || ack.newDevice == false;
 
         if (isConfigured) {
-          debugPrint('MACHINE IS CONFIGURED. Triggering manifest sync asynchronously...');
-          // Trigger manifest sync in background, without awaiting, to prevent UI freeze/blocking
-          syncService.requestManifest().catchError((e) {
-            debugPrint('Failed to request manifest in background: $e');
+          debugPrint('MACHINE IS CONFIGURED. Triggering manifest sync and level poller asynchronously...');
+          // Trigger manifest sync and immediately after, request spice levels
+          syncService.requestManifest().then((_) {
+            syncService.requestSync(); // Immediate levels request to clear any old cached dashboard values!
+          }).catchError((e) {
+            debugPrint('Failed to request manifest/levels in background: $e');
           });
         } else {
-          debugPrint('MACHINE IS UNCONFIGURED. Skipping manifest sync and routing to Onboarding Setup.');
+          debugPrint('MACHINE IS UNCONFIGURED. Clearing old slots cache and routing to Onboarding Setup.');
+          await StorageService.clearSlotsForMachine(foundDevice.device.remoteId.str);
         }
 
         emit(
-          BluetoothHandshakeSuccess(),
+          BluetoothHandshakeSuccess(isConfigured: isConfigured),
         );
 
       } else {

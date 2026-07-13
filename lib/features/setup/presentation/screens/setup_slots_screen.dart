@@ -176,8 +176,10 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
       level: isSkipping ? 0 : 100, // Skipped slots have level 0%, configured slots 100%
     );
 
-    // Save individual slot map into local Hive storage
-    await StorageService.slotsBox.put(slotModel.slotNumber, slotModel.toJson());
+    // Save individual slot map into local Hive storage prefixed by MAC address
+    final macAddress = StorageService.getLastMachine()?.deviceId;
+    final prefix = macAddress != null ? '${macAddress}_' : '';
+    await StorageService.slotsBox.put('${prefix}${slotModel.slotNumber}', slotModel.toJson());
 
     setState(() {
       _isSyncing = false;

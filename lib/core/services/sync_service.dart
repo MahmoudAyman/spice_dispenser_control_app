@@ -60,14 +60,18 @@ class SyncService {
   Future<void> handleLevels(
     LevelsResponse levels,
   ) async {
+    final macAddress = StorageService.getLastMachine()?.deviceId;
+    final prefix = macAddress != null ? '${macAddress}_' : '';
+
     for (var entry in levels.data.entries) {
-      final val = StorageService.slotsBox.get(entry.key);
+      final key = '${prefix}${entry.key}';
+      final val = StorageService.slotsBox.get(key);
       if (val != null) {
         final slot = Map<String, dynamic>.from(val);
         slot['level'] = entry.value;
 
         await StorageService.slotsBox.put(
-          entry.key,
+          key,
           slot,
         );
       }
@@ -100,8 +104,10 @@ class SyncService {
         level: item.level ?? 0,
       );
 
-      // Save synced slot individually in the Hive cache
-      await StorageService.slotsBox.put(slotModel.slotNumber, slotModel.toJson());
+      // Save synced slot individually in the Hive cache prefixed by MAC
+      final macAddress = StorageService.getLastMachine()?.deviceId;
+      final prefix = macAddress != null ? '${macAddress}_' : '';
+      await StorageService.slotsBox.put('${prefix}${slotModel.slotNumber}', slotModel.toJson());
       debugPrint('MANIFEST SYNCED SLOT ${slotModel.slotNumber}: ${slotModel.spiceName} (${slotModel.level}%)');
     } else if (item.type == 'manifest_end') {
       debugPrint('MANIFEST SYNC COMPLETED SUCCESSFULLY!');
