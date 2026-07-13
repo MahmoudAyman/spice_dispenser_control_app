@@ -17,6 +17,9 @@ class StorageKeys {
   static const String favoriteDeviceId =
       'favorite_device_id';
 
+  static const String maxFillGrams =
+      'max_fill_grams';
+
   /// Recipes
 
   static const String recipesBox =

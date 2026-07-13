@@ -216,6 +216,9 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
 
     // 3. Animation and Slide Transition Phase
     if (_currentSlotIndex < totalSlots - 1) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).clearSnackBars();
+      }
       _pageController.nextPage(
         duration: const Duration(milliseconds: 450),
         curve: Curves.easeInOutCubic,

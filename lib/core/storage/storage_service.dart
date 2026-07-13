@@ -148,6 +148,26 @@ class StorageService {
     ) as String?;
   }
 
+  /// MAX FILL GRAMS SETTING
+
+  static Future<void> setMaxFillGrams(
+      double grams,
+      ) async {
+
+    await userBox.put(
+      StorageKeys.maxFillGrams,
+      grams,
+    );
+  }
+
+  static double getMaxFillGrams() {
+
+    return userBox.get(
+      StorageKeys.maxFillGrams,
+      defaultValue: 200.0,
+    ) as double;
+  }
+
   /// MACHINE INITIALIZED
 
   static Future<void>

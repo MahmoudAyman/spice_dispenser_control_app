@@ -112,8 +112,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
       final bluetoothCubit = context.read<BluetoothCubit>();
       final isConnected = bluetoothCubit.state is BluetoothHandshakeSuccess;
       if (isConnected && bluetoothCubit.bleService.writeCharacteristic != null) {
-        debugPrint('Periodic Poll: requesting updated levels from machine LittleFS...');
-        bluetoothCubit.syncService.requestSync(); // Request sync (sends {"type": "get_levels"})
+        debugPrint('Periodic Poll: requesting updated manifest and levels from machine...');
+        bluetoothCubit.syncService.requestManifest().then((_) {
+          bluetoothCubit.syncService.requestSync(); // Request sync (sends {"type": "get_levels"})
+        }).catchError((e) {
+          debugPrint('Failed background manifest/levels poll: $e');
+        });
       }
     } catch (e) {
       debugPrint('Polling request failed: $e');
@@ -967,7 +971,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       ),
                     ),
                     Text(
-                      '${slot.level * 2}g',
+                      '${(slot.level * StorageService.getMaxFillGrams() / 100.0).toStringAsFixed(0)}g',
                       style: const TextStyle(
                         fontSize: 12,
                         fontWeight: FontWeight.w500,

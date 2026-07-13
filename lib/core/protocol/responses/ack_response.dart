@@ -6,6 +6,7 @@ class AckResponse {
   final String? detail;
   final int? slot;
   final String? name;
+  final double? maxFill;
 
   AckResponse({
     required this.command,
@@ -15,6 +16,7 @@ class AckResponse {
     this.detail,
     this.slot,
     this.name,
+    this.maxFill,
   });
 
   bool get isSuccess {
@@ -33,6 +35,7 @@ class AckResponse {
       detail: json['detail'],
       slot: json['slot'],
       name: json['name'],
+      maxFill: json['max_fill'] != null ? (json['max_fill'] as num).toDouble() : null,
     );
   }
 }

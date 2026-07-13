@@ -106,6 +106,134 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  void _showMaxFillDialog(BuildContext context) {
+    final currentMaxFill = StorageService.getMaxFillGrams();
+    final controller = TextEditingController(text: currentMaxFill.toStringAsFixed(0));
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.scale, color: AppColors.primary, size: 28),
+              SizedBox(width: 12),
+              Text(
+                'Max Container Capacity',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Set the maximum capacity of your physical spice containers in grams.',
+                style: TextStyle(fontSize: 14, color: AppColors.grey),
+              ),
+              const SizedBox(height: 20),
+              TextField(
+                controller: controller,
+                keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                decoration: const InputDecoration(
+                  labelText: 'Max Capacity (grams)',
+                  suffixText: 'g',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+            ),
+            TextButton(
+              onPressed: () async {
+                final input = controller.text.trim();
+                final value = double.tryParse(input);
+                if (value == null || value <= 0.0) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please enter a valid capacity'), backgroundColor: Colors.redAccent),
+                  );
+                  return;
+                }
+                
+                Navigator.pop(context); // Close dialog
+                await _updateMaxFill(value);
+              },
+              child: const Text('Save', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _updateMaxFill(double value) async {
+    // Show Loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: const Row(
+          children: [
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+            ),
+            SizedBox(width: 24),
+            Expanded(
+              child: Text(
+                'Updating dispenser capacity...',
+                style: TextStyle(fontWeight: FontWeight.w500),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final bleCubit = context.read<BluetoothCubit>();
+    final isConnected = bleCubit.state is BluetoothHandshakeSuccess;
+
+    if (isConnected) {
+      try {
+        debugPrint('SETTINGS -> Sending set_max_fill command: $value grams');
+        final ack = await bleCubit.bleService.sendCommand(
+          command: {
+            'type': 'set_max_fill',
+            'max_fill': value,
+          },
+        );
+        debugPrint('set_max_fill ACK: ${ack.status}, max_fill: ${ack.maxFill}');
+      } catch (e) {
+        debugPrint('Failed to send set_max_fill over BLE: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to update machine. Setting locally: $e'), backgroundColor: Colors.amber[800]),
+          );
+        }
+      }
+    }
+
+    // Save locally
+    await StorageService.setMaxFillGrams(value);
+
+    if (mounted) {
+      Navigator.pop(context); // Close loading dialog
+      setState(() {}); // Rebuild to update visual label
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Container capacity updated to ${value.toStringAsFixed(0)}g successfully!'),
+          backgroundColor: AppColors.green,
+        ),
+      );
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final bleCubit = context.watch<BluetoothCubit>();
@@ -216,6 +344,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     _autoConnectEnabled = value;
                   });
                 },
+              ),
+              _buildSettingsTile(
+                icon: Icons.scale,
+                color: Colors.purpleAccent,
+                title: 'Max Container Capacity',
+                subtitle: 'Current: ${StorageService.getMaxFillGrams().toStringAsFixed(0)}g',
+                onTap: () => _showMaxFillDialog(context),
               ),
               _buildSettingsTile(
                 icon: Icons.bluetooth,
