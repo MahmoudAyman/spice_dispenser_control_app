@@ -18,7 +18,15 @@ import 'responses/levels_response.dart';
 
 import 'responses/manifest_response.dart';
 
+import 'responses/setup_ready_for_slot_response.dart';
+
 class ProtocolService {
+
+  /// SETUP READY STREAM
+
+  final StreamController<SetupReadyForSlotResponse>
+  setupReadyController =
+  StreamController.broadcast();
 
   /// ACK STREAM
 
@@ -107,6 +115,16 @@ class ProtocolService {
           is AckResponse) {
 
             ackController.add(
+              parsed,
+            );
+          }
+
+          /// SETUP READY FOR NEXT SLOT
+
+          else if (parsed
+          is SetupReadyForSlotResponse) {
+
+            setupReadyController.add(
               parsed,
             );
           }
@@ -344,5 +362,7 @@ class ProtocolService {
     levelsController.close();
 
     manifestController.close();
+
+    setupReadyController.close();
   }
 }

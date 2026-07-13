@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
@@ -139,14 +140,41 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
           return; // Abort page transition, keep input unlocked for the same slot!
         }
 
-        // Show success toast on registering slot name
+        // Show success toast on registering slot name and waiting message
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('Registered "$registerName" on Slot ${_currentSlotIndex + 1} successfully!'),
+              content: Text(_currentSlotIndex < totalSlots - 1 
+                ? 'Registered Slot ${_currentSlotIndex + 1}! Waiting for machine to align next container...'
+                : 'Registered "$registerName" on Slot ${_currentSlotIndex + 1} successfully!'),
               backgroundColor: const Color(0xFF22C55E),
-              duration: const Duration(seconds: 1),
+              duration: _currentSlotIndex < totalSlots - 1 ? const Duration(seconds: 5) : const Duration(seconds: 1),
             ),
+          );
+        }
+
+        // Wait for ready message if there is a next slot
+        if (_currentSlotIndex < totalSlots - 1) {
+          final nextSlotId = _currentSlotIndex + 2;
+          debugPrint('ONBOARDING SYNC -> Waiting for setup_ready_for_slot for slot ID: $nextSlotId');
+
+          final completer = Completer<void>();
+          late StreamSubscription sub;
+
+          sub = bluetoothCubit.bleService.protocolService.setupReadyController.stream.listen((ready) {
+            debugPrint('ONBOARDING SYNC -> Received setup_ready_for_slot for slot: ${ready.slot}');
+            if (ready.slot == nextSlotId) {
+              completer.complete();
+              sub.cancel();
+            }
+          });
+
+          await completer.future.timeout(
+            const Duration(seconds: 15),
+            onTimeout: () {
+              sub.cancel();
+              throw Exception('Timeout waiting for machine to align next container.');
+            },
           );
         }
 

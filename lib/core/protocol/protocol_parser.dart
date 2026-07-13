@@ -8,6 +8,8 @@ import 'responses/status_response.dart';
 
 import 'responses/manifest_response.dart';
 
+import 'responses/setup_ready_for_slot_response.dart';
+
 class ProtocolParser {
 
   static dynamic parse(
@@ -18,6 +20,12 @@ class ProtocolParser {
     json['type'];
 
     switch (type) {
+
+      case 'setup_ready_for_slot':
+
+        return SetupReadyForSlotResponse.fromJson(
+          json,
+        );
 
       case 'ack':
 
