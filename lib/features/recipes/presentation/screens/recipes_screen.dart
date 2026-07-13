@@ -946,6 +946,25 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
       return;
     }
 
+    // Duplicate Name Validation for the same machine
+    final existingRecipes = _recipeStorageService.getRecipes();
+    final nameLower = name.toLowerCase();
+    
+    final hasDuplicate = existingRecipes.any((r) {
+      final isSameRecipe = _isEdit && r.id == widget.recipe?.id;
+      return !isSameRecipe && r.name.toLowerCase() == nameLower;
+    });
+
+    if (hasDuplicate) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('A recipe named "$name" already exists for this machine. Please use a unique name.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
     if (_spiceEntries.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(content: Text('Please add at least one spice'), backgroundColor: Colors.redAccent),
