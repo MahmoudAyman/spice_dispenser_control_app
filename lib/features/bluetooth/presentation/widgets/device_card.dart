@@ -5,11 +5,15 @@ import '../../data/models/ble_device_model.dart';
 class DeviceCard extends StatelessWidget {
   final BleDeviceModel device;
   final VoidCallback onTap;
+  final bool isFavorite;
+  final VoidCallback onFavoriteTap;
 
   const DeviceCard({
     super.key,
     required this.device,
     required this.onTap,
+    this.isFavorite = false,
+    required this.onFavoriteTap,
   });
 
   @override
@@ -81,6 +85,18 @@ class DeviceCard extends StatelessWidget {
                 ],
               ),
             ),
+
+            /// FAVORITE STAR ICON
+            IconButton(
+              icon: Icon(
+                isFavorite ? Icons.star : Icons.star_border,
+                color: isFavorite ? Colors.amber : Colors.grey,
+                size: 28,
+              ),
+              onPressed: onFavoriteTap,
+            ),
+
+            const SizedBox(width: 8),
 
             /// PAIRED
             if (device.rssi > -60)

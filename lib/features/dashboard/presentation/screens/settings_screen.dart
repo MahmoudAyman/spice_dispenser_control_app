@@ -4,11 +4,23 @@ import '../../../../core/storage/storage_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../bluetooth/presentation/cubit/bluetooth_cubit.dart';
 import '../../../bluetooth/presentation/cubit/bluetooth_state.dart';
-import '../../../setup/presentation/screens/setup_welcome_screen.dart';
 import '../../../slots/presentation/screens/container_management_screen.dart';
 
-class SettingsScreen extends StatelessWidget {
+class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
+
+  @override
+  State<SettingsScreen> createState() => _SettingsScreenState();
+}
+
+class _SettingsScreenState extends State<SettingsScreen> {
+  bool _autoConnectEnabled = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _autoConnectEnabled = StorageService.isAutoConnectEnabled();
+  }
 
   void _triggerFactoryReset(BuildContext context) {
     showDialog(
@@ -90,13 +102,7 @@ class SettingsScreen extends StatelessWidget {
     // Remove loading overlay and route user back to onboarding SetupWelcomeScreen
     if (context.mounted) {
       Navigator.of(context).pop(); // Dismiss loading spinner dialog
-      Navigator.pushAndRemoveUntil(
-        context,
-        MaterialPageRoute(
-          builder: (_) => const SetupWelcomeScreen(),
-        ),
-        (route) => false,
-      );
+      bleCubit.disconnect();
     }
   }
 
@@ -198,13 +204,26 @@ class SettingsScreen extends StatelessWidget {
                   );
                 },
               ),
+              _buildSwitchTile(
+                icon: Icons.sync,
+                color: Colors.teal,
+                title: 'Auto-connect',
+                subtitle: 'Auto-connect to favorite device on scan',
+                value: _autoConnectEnabled,
+                onChanged: (value) async {
+                  await StorageService.setAutoConnect(value);
+                  setState(() {
+                    _autoConnectEnabled = value;
+                  });
+                },
+              ),
               _buildSettingsTile(
                 icon: Icons.bluetooth,
                 color: AppColors.primary,
                 title: 'Pair New Device',
                 subtitle: 'Scan and pair a different dispenser',
                 onTap: () {
-                  Navigator.of(context).popUntil((route) => route.isFirst);
+                  context.read<BluetoothCubit>().disconnect();
                 },
               ),
             ]),
@@ -244,7 +263,7 @@ class SettingsScreen extends StatelessWidget {
                             Navigator.pop(context);
                             await StorageService.clearStorage();
                             if (context.mounted) {
-                              Navigator.of(context).popUntil((route) => route.isFirst);
+                              context.read<BluetoothCubit>().disconnect();
                             }
                           },
                           child: const Text('Reset', style: TextStyle(color: Colors.red, fontWeight: FontWeight.bold)),
@@ -344,6 +363,50 @@ class SettingsScreen extends StatelessWidget {
       ),
       trailing: const Icon(Icons.arrow_forward_ios, size: 14, color: AppColors.grey),
       onTap: onTap,
+    );
+  }
+
+  Widget _buildSwitchTile({
+    required IconData icon,
+    required Color color,
+    required String title,
+    required String subtitle,
+    required bool value,
+    required ValueChanged<bool> onChanged,
+  }) {
+    return ListTile(
+      contentPadding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      leading: Container(
+        padding: const EdgeInsets.all(10),
+        decoration: BoxDecoration(
+          color: color.withOpacity(0.1),
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Icon(icon, color: color, size: 22),
+      ),
+      title: Text(
+        title,
+        style: const TextStyle(
+          fontSize: 16,
+          fontWeight: FontWeight.bold,
+          color: AppColors.black,
+        ),
+      ),
+      subtitle: Padding(
+        padding: const EdgeInsets.only(top: 4),
+        child: Text(
+          subtitle,
+          style: const TextStyle(
+            fontSize: 12,
+            color: AppColors.grey,
+          ),
+        ),
+      ),
+      trailing: Switch(
+        value: value,
+        onChanged: onChanged,
+        activeColor: AppColors.primary,
+      ),
     );
   }
 }

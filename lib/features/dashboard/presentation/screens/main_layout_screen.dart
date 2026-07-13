@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../bluetooth/presentation/cubit/bluetooth_cubit.dart';
+import '../../../bluetooth/presentation/cubit/bluetooth_state.dart';
+import '../../../bluetooth/presentation/screens/connection_screen.dart';
 import '../../../recipes/presentation/screens/recipes_screen.dart';
 import 'dashboard_screen.dart';
 import 'settings_screen.dart';
@@ -28,11 +32,20 @@ class MainLayoutScreenState extends State<MainLayoutScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      body: IndexedStack(
-        index: _currentIndex,
-        children: _screens,
-      ),
+    return BlocListener<BluetoothCubit, BluetoothState>(
+      listener: (context, state) {
+        if (state is! BluetoothHandshakeSuccess) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const ConnectionScreen()),
+            (route) => false,
+          );
+        }
+      },
+      child: Scaffold(
+        body: IndexedStack(
+          index: _currentIndex,
+          children: _screens,
+        ),
       bottomNavigationBar: Container(
         decoration: BoxDecoration(
           boxShadow: [
@@ -96,6 +109,7 @@ class MainLayoutScreenState extends State<MainLayoutScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 }

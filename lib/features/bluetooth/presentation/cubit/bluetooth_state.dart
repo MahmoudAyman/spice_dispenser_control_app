@@ -12,7 +12,11 @@ class BluetoothLoaded extends BluetoothState {
   BluetoothLoaded(this.devices);
 }
 
-class BluetoothConnecting extends BluetoothState {}
+class BluetoothConnecting extends BluetoothState {
+  final String message;
+
+  BluetoothConnecting({this.message = 'Connecting...'});
+}
 
 class BluetoothConnected extends BluetoothState {}
 
@@ -24,7 +28,11 @@ class BluetoothHandshakeSuccess extends BluetoothState {
 
 class BluetoothHandshakeFailed extends BluetoothState {}
 
-class BluetoothAutoConnecting extends BluetoothState {}
+class BluetoothAutoConnecting extends BluetoothState {
+  final String message;
+
+  BluetoothAutoConnecting({this.message = 'Scanning for favorite...'});
+}
 
 class BluetoothError extends BluetoothState {
   final String message;

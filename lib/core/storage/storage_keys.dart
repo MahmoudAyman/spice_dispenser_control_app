@@ -11,6 +11,12 @@ class StorageKeys {
   static const String lastMachine =
       'last_machine';
 
+  static const String autoConnect =
+      'auto_connect';
+
+  static const String favoriteDeviceId =
+      'favorite_device_id';
+
   /// Recipes
 
   static const String recipesBox =

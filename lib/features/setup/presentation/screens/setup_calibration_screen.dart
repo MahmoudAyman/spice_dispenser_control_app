@@ -1,5 +1,9 @@
 import 'package:flutter/material.dart';
+import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../bluetooth/presentation/cubit/bluetooth_cubit.dart';
+import '../../../bluetooth/presentation/cubit/bluetooth_state.dart';
+import '../../../bluetooth/presentation/screens/connection_screen.dart';
 import 'setup_complete_screen.dart';
 
 class SetupCalibrationScreen
@@ -24,9 +28,18 @@ class _SetupCalibrationScreenState
   @override
   Widget build(BuildContext context) {
 
-    return Scaffold(
-      backgroundColor:
-      const Color(0xFFF4F7FB),
+    return BlocListener<BluetoothCubit, BluetoothState>(
+      listener: (context, state) {
+        if (state is! BluetoothHandshakeSuccess) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const ConnectionScreen()),
+            (route) => false,
+          );
+        }
+      },
+      child: Scaffold(
+        backgroundColor:
+        const Color(0xFFF4F7FB),
 
       appBar: AppBar(
         backgroundColor:
@@ -188,6 +201,7 @@ class _SetupCalibrationScreenState
           ],
         ),
       ),
+    ),
     );
   }
 }

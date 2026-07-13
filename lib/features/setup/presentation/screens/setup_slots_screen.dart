@@ -6,6 +6,7 @@ import '../../../../core/storage/storage_service.dart';
 import '../../../../core/theme/app_colors.dart';
 import '../../../bluetooth/presentation/cubit/bluetooth_cubit.dart';
 import '../../../bluetooth/presentation/cubit/bluetooth_state.dart';
+import '../../../bluetooth/presentation/screens/connection_screen.dart';
 import '../../../container_management/data/models/slot_model.dart';
 import '../widgets/setup_step_indicator.dart';
 import 'setup_complete_screen.dart';
@@ -239,8 +240,17 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
     final screenHeight = MediaQuery.of(context).size.height;
     final progress = (_currentSlotIndex + 1) / totalSlots;
 
-    return Scaffold(
-      backgroundColor: const Color(0xFFF4F7FB),
+    return BlocListener<BluetoothCubit, BluetoothState>(
+      listener: (context, state) {
+        if (state is! BluetoothHandshakeSuccess) {
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const ConnectionScreen()),
+            (route) => false,
+          );
+        }
+      },
+      child: Scaffold(
+        backgroundColor: const Color(0xFFF4F7FB),
       appBar: AppBar(
         backgroundColor: const Color(0xFF2563EB),
         elevation: 0,
@@ -323,6 +333,7 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
           ],
         ),
       ),
+    ),
     );
   }
 

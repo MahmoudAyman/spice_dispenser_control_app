@@ -1,5 +1,7 @@
+import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
+import 'package:flutter_blue_plus/flutter_blue_plus.dart' hide BluetoothState;
 
 import '../../../../../core/services/ble_service.dart';
 import '../../../../../core/services/sync_service.dart';
@@ -20,6 +22,8 @@ class BluetoothCubit
 
   late final SyncService
   syncService;
+
+  StreamSubscription<BluetoothConnectionState>? _connectionStateSubscription;
 
   BluetoothCubit(
       this.bleService,
@@ -44,6 +48,14 @@ class BluetoothCubit
     );
 
     try {
+
+      final currentAdapterState = await FlutterBluePlus.adapterState.first;
+      if (currentAdapterState != BluetoothAdapterState.on) {
+        emit(
+          BluetoothInitial(),
+        );
+        return;
+      }
 
       final results =
       await bleService
@@ -94,7 +106,7 @@ class BluetoothCubit
     try {
 
       emit(
-        BluetoothConnecting(),
+        BluetoothConnecting(message: 'Connecting to device...'),
       );
 
       /// CONNECT
@@ -104,8 +116,16 @@ class BluetoothCubit
         bleDevice.device,
       );
 
+      _connectionStateSubscription?.cancel();
+      _connectionStateSubscription = bleService.connectedDevice!.connectionState.listen((connectionState) {
+        if (connectionState == BluetoothConnectionState.disconnected) {
+          debugPrint('Cubit detected BLE disconnection!');
+          emit(BluetoothInitial());
+        }
+      });
+
       emit(
-        BluetoothConnected(),
+        BluetoothConnecting(message: 'Authenticating with device...'),
       );
 
       /// UUID
@@ -189,22 +209,33 @@ class BluetoothCubit
 
     try {
 
-      emit(
-        BluetoothAutoConnecting(),
-      );
-
-      final lastMachine =
-      StorageService
-          .getLastMachine();
-
-      if (lastMachine == null) {
-
+      if (!StorageService.isAutoConnectEnabled()) {
         emit(
           BluetoothInitial(),
         );
-
         return;
       }
+
+      final adapterState = await FlutterBluePlus.adapterState.first;
+      if (adapterState != BluetoothAdapterState.on) {
+        emit(
+          BluetoothInitial(),
+        );
+        return;
+      }
+
+      final favoriteId = StorageService.getFavoriteDeviceId();
+
+      if (favoriteId == null) {
+        emit(
+          BluetoothInitial(),
+        );
+        return;
+      }
+
+      emit(
+        BluetoothAutoConnecting(message: 'Scanning for favorite device...'),
+      );
 
       final results =
       await bleService
@@ -240,9 +271,7 @@ class BluetoothCubit
             devices.firstWhere(
                   (device) {
 
-                return device.id ==
-                    lastMachine
-                        .deviceId;
+                return device.id == favoriteId;
               },
             );
 
@@ -261,7 +290,12 @@ class BluetoothCubit
       }
 
       emit(
-        BluetoothConnecting(),
+        BluetoothAutoConnecting(message: 'Favorite device found!'),
+      );
+      await Future.delayed(const Duration(milliseconds: 600));
+
+      emit(
+        BluetoothConnecting(message: 'Connecting to favorite device...'),
       );
 
       /// CONNECT
@@ -269,6 +303,18 @@ class BluetoothCubit
       await bleService
           .connectToDevice(
         foundDevice.device,
+      );
+
+      _connectionStateSubscription?.cancel();
+      _connectionStateSubscription = bleService.connectedDevice!.connectionState.listen((connectionState) {
+        if (connectionState == BluetoothConnectionState.disconnected) {
+          debugPrint('Cubit detected BLE disconnection during auto-reconnect!');
+          emit(BluetoothInitial());
+        }
+      });
+
+      emit(
+        BluetoothConnecting(message: 'Authenticating with device...'),
       );
 
       /// UUID
@@ -286,6 +332,22 @@ class BluetoothCubit
       );
 
       if (ack != null && ack.isSuccess) {
+
+        /// SAVE MACHINE
+
+        await StorageService
+            .saveLastMachine(
+          LastConnectedMachineModel(
+            deviceId:
+            foundDevice
+                .device
+                .remoteId
+                .str,
+
+            deviceName:
+            foundDevice.name,
+          ),
+        );
 
         /// START SYNC LISTENERS
 
@@ -329,9 +391,33 @@ class BluetoothCubit
     }
   }
 
+  /// SET FAVORITE DEVICE
+
+  void setFavoriteDevice(String deviceId) {
+    final currentFavorite = StorageService.getFavoriteDeviceId();
+    if (currentFavorite == deviceId) {
+      StorageService.setFavoriteDeviceId(null);
+    } else {
+      StorageService.setFavoriteDeviceId(deviceId);
+    }
+
+    if (state is BluetoothLoaded) {
+      emit(BluetoothLoaded(List.from((state as BluetoothLoaded).devices)));
+    }
+  }
+
+  /// DISCONNECT
+
+  Future<void> disconnect() async {
+    _connectionStateSubscription?.cancel();
+    _connectionStateSubscription = null;
+    await bleService.disconnectDevice();
+    emit(BluetoothInitial());
+  }
+
   @override
   Future<void> close() {
-
+    _connectionStateSubscription?.cancel();
     bleService.dispose();
 
     return super.close();

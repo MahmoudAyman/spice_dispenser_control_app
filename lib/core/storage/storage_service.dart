@@ -100,6 +100,54 @@ class StorageService {
     );
   }
 
+  /// AUTO CONNECT SETTING
+
+  static Future<void> setAutoConnect(
+      bool enabled,
+      ) async {
+
+    await userBox.put(
+      StorageKeys.autoConnect,
+      enabled,
+    );
+  }
+
+  static bool isAutoConnectEnabled() {
+
+    return userBox.get(
+      StorageKeys.autoConnect,
+      defaultValue: true,
+    ) as bool;
+  }
+
+  /// FAVORITE DEVICE ID SETTING
+
+  static Future<void> setFavoriteDeviceId(
+      String? deviceId,
+      ) async {
+
+    if (deviceId == null) {
+
+      await userBox.delete(
+        StorageKeys.favoriteDeviceId,
+      );
+
+    } else {
+
+      await userBox.put(
+        StorageKeys.favoriteDeviceId,
+        deviceId,
+      );
+    }
+  }
+
+  static String? getFavoriteDeviceId() {
+
+    return userBox.get(
+      StorageKeys.favoriteDeviceId,
+    ) as String?;
+  }
+
   /// MACHINE INITIALIZED
 
   static Future<void>
