@@ -323,11 +323,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 color: Colors.blueAccent,
                 title: 'Manage Containers',
                 subtitle: 'Configure spices, levels and expiry dates',
-                onTap: () {
+                  onTap: () {
                   Navigator.push(
                     context,
                     MaterialPageRoute(
-                      builder: (_) => const ContainerManagementScreen(),
+                      builder: (_) => ContainerManagementScreen(
+                        bleService: context.read<BluetoothCubit>().bleService,
+                      ),
                     ),
                   );
                 },

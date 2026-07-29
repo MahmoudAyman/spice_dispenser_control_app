@@ -201,7 +201,7 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
     final slotModel = SlotModel(
       slotNumber: _currentSlotIndex + 1,
       spiceName: isSkipping ? '' : spiceName,
-      expiryDate: isSkipping ? '' : expiryDate,
+      expiryEpoch: null,
       level: isSkipping ? 0 : 100, // Skipped slots have level 0%, configured slots 100%
     );
 
@@ -239,7 +239,7 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
       return SlotModel(
         slotNumber: index + 1,
         spiceName: isEmpty ? '' : spiceName,
-        expiryDate: isEmpty ? '' : expiryDate,
+        expiryEpoch: null,
         level: isEmpty ? 0 : 100,
       );
     });

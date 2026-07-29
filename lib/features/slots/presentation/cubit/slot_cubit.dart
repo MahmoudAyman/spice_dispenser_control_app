@@ -6,36 +6,30 @@ import '../../../sync/services/slot_sync_service.dart';
 import 'slot_state.dart';
 
 class SlotCubit extends Cubit<SlotState> {
-
-  final SlotStorageService
-  storageService;
-
-  final SlotSyncService
-  syncService;
+  final SlotStorageService storageService;
+  final SlotSyncService syncService;
 
   SlotCubit(
-      this.storageService,
-      this.syncService,
-      ) : super(SlotInitial());
+    this.storageService,
+    this.syncService,
+  ) : super(SlotInitial());
 
   List<SlotModel> slots = [];
 
   void loadSlots() {
-
     emit(SlotLoading());
 
-    slots =
-        storageService.getSlots();
+    slots = storageService.getSlots();
 
     if (slots.isEmpty) {
-
+      // Generate placeholder entries for all 20 slots when no data exists yet.
       slots = List.generate(
-        6,
-            (index) => SlotModel(
+        20,
+        (index) => SlotModel(
           slotNumber: index + 1,
           spiceName: '',
-          expiryDate: '',
-          level: 100,
+          expiryEpoch: null,
+          level: 0,
         ),
       );
     }
@@ -43,34 +37,49 @@ class SlotCubit extends Cubit<SlotState> {
     emit(SlotLoaded(slots));
   }
 
-  Future<void> updateSlot(
-      SlotModel slot,
-      ) async {
-
+  Future<void> updateSlot(SlotModel slot) async {
     emit(SlotUpdating());
 
-    await syncService
-        .syncSlotToMachine(slot);
-
-    await storageService
-        .updateSlot(slot);
-
-    loadSlots();
-
-    emit(SlotUpdated());
+    try {
+      await syncService.syncSlotToMachine(slot);
+      await storageService.updateSlot(slot);
+      // Refresh the list from storage so the UI reflects the persisted state.
+      slots = storageService.getSlots();
+      emit(SlotLoaded(slots));
+      emit(SlotUpdated());
+    } catch (e) {
+      emit(SlotError('Failed to update slot: $e'));
+    }
   }
 
   Future<void> refillSlot(
-      int slotNumber,
-      ) async {
-
+    int slotNumber, {
+    required int level,
+    int? expiryEpoch,
+  }) async {
     emit(SlotRefilling());
 
-    await syncService
-        .refillSlot(slotNumber);
+    try {
+      await syncService.refillSlot(
+        slotNumber,
+        level: level,
+        expiryEpoch: expiryEpoch,
+      );
 
-    loadSlots();
+      // Update local model with the new level (and optional expiry).
+      final idx = slots.indexWhere((s) => s.slotNumber == slotNumber);
+      if (idx != -1) {
+        slots[idx] = slots[idx].copyWith(
+          level: level,
+          expiryEpoch: expiryEpoch ?? slots[idx].expiryEpoch,
+        );
+        await storageService.updateSlot(slots[idx]);
+      }
 
-    emit(SlotRefilled());
+      emit(SlotLoaded(slots));
+      emit(SlotRefilled());
+    } catch (e) {
+      emit(SlotError('Failed to refill slot: $e'));
+    }
   }
 }

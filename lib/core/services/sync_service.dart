@@ -89,18 +89,13 @@ class SyncService {
     if (item.type == 'manifest_start') {
       debugPrint('MANIFEST SYNC STARTED: Expected total: ${item.total}');
     } else if (item.type == 'manifest_item' && item.slot != null) {
-      // Decode optional unix epoch timestamp to visual date string for the client
-      String expiryStr = '';
       final expirySeconds = item.expiry;
-      if (expirySeconds != null && expirySeconds > 0) {
-        final date = DateTime.fromMillisecondsSinceEpoch(expirySeconds * 1000);
-        expiryStr = '${date.day}/${date.month}/${date.year}';
-      }
+      final epochVal = (expirySeconds != null && expirySeconds > 0) ? expirySeconds : null;
 
       final slotModel = SlotModel(
         slotNumber: item.slot!,
         spiceName: item.name ?? '',
-        expiryDate: expiryStr,
+        expiryEpoch: epochVal,
         level: item.level ?? 0,
       );
 

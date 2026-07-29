@@ -7,9 +7,7 @@ class SlotInitial extends SlotState {}
 class SlotLoading extends SlotState {}
 
 class SlotLoaded extends SlotState {
-
   final List<SlotModel> slots;
-
   SlotLoaded(this.slots);
 }
 
@@ -22,8 +20,6 @@ class SlotRefilling extends SlotState {}
 class SlotRefilled extends SlotState {}
 
 class SlotError extends SlotState {
-
   final String message;
-
   SlotError(this.message);
 }

@@ -30,7 +30,7 @@ class SlotCard extends StatelessWidget {
 
     final expiryController =
     TextEditingController(
-      text: slot.expiryDate,
+      text: slot.expiryDisplayString,
     );
 
     return Container(

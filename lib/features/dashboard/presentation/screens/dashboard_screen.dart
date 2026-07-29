@@ -69,28 +69,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
 
     // 3. Calendar arithmetic check for expired/expiring ingredients
-    final now = DateTime.now();
     for (var slot in slots) {
-      if (slot.spiceName.trim().isNotEmpty && slot.expiryDate.trim().isNotEmpty) {
-        try {
-          final parts = slot.expiryDate.split('/');
-          if (parts.length == 3) {
-            final day = int.tryParse(parts[0]);
-            final month = int.tryParse(parts[1]);
-            final year = int.tryParse(parts[2]);
-            if (day != null && month != null && year != null) {
-              final expiryDate = DateTime(year, month, day);
-
-              if (expiryDate.isBefore(now)) {
-                _notifications.add('Expired Spice: "${slot.spiceName}" in Slot ${slot.slotNumber} has expired on ${slot.expiryDate}!');
-              } else if (expiryDate.difference(now).inDays <= 7) {
-                final daysLeft = expiryDate.difference(now).inDays;
-                _notifications.add('Expiring Soon: "${slot.spiceName}" in Slot ${slot.slotNumber} expires in $daysLeft days (${slot.expiryDate}).');
-              }
-            }
-          }
-        } catch (e) {
-          debugPrint('Failed to run expiry calendar arithmetic for slot ${slot.slotNumber}: $e');
+      if (slot.spiceName.trim().isNotEmpty) {
+        if (slot.isExpired) {
+          _notifications.add('Expired Spice: "${slot.spiceName}" in Slot ${slot.slotNumber} has expired on ${slot.expiryDisplayString}!');
+        } else if (slot.isExpiringSoon) {
+          final expiryDate = DateTime.fromMillisecondsSinceEpoch((slot.expiryEpoch ?? 0) * 1000);
+          final daysLeft = expiryDate.difference(DateTime.now()).inDays;
+          _notifications.add('Expiring Soon: "${slot.spiceName}" in Slot ${slot.slotNumber} expires in $daysLeft days (${slot.expiryDisplayString}).');
         }
       }
     }

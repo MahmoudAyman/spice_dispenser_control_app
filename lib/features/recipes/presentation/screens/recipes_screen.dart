@@ -893,7 +893,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
         matchingSlot ??= SlotModel(
           slotNumber: 0,
           spiceName: ing.name,
-          expiryDate: '',
+          expiryEpoch: null,
           level: 100,
         );
 
@@ -1205,7 +1205,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
               return SlotModel(
                 slotNumber: idx + 1,
                 spiceName: presetsList[idx],
-                expiryDate: '',
+                expiryEpoch: null,
                 level: 100,
               );
             },
