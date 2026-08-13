@@ -54,28 +54,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }
 
   Future<void> _executeFactoryReset(BuildContext context) async {
+    BuildContext? dialogContextRef;
+
     // Show Loading dialog
     showDialog(
       context: context,
       barrierDismissible: false,
-      builder: (BuildContext dialogContext) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        content: const Row(
-          children: [
-            CircularProgressIndicator(
-              valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
-            ),
-            SizedBox(width: 24),
-            Expanded(
-              child: Text(
-                'Wiping machine database & restarting...',
-                style: TextStyle(fontWeight: FontWeight.w500),
+      builder: (BuildContext dialogContext) {
+        dialogContextRef = dialogContext;
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          content: const Row(
+            children: [
+              CircularProgressIndicator(
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
               ),
-            ),
-          ],
-        ),
-      ),
+              SizedBox(width: 24),
+              Expanded(
+                child: Text(
+                  'Wiping machine database & restarting...',
+                  style: TextStyle(fontWeight: FontWeight.w500),
+                ),
+              ),
+            ],
+          ),
+        );
+      },
     );
+
+    // Give dialog transition a moment to register on the Navigator
+    await Future.delayed(const Duration(milliseconds: 300));
 
     final bleCubit = context.read<BluetoothCubit>();
     final isConnected = bleCubit.state is BluetoothHandshakeSuccess;
@@ -93,7 +101,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     } else {
       // Simulate physical machine wipe delay offline
-      await Future.delayed(const Duration(milliseconds: 1500));
+      await Future.delayed(const Duration(milliseconds: 1200));
     }
 
     // Clean up all local phone databases and Hive storage
@@ -101,7 +109,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     // Remove loading overlay and route user back to onboarding SetupWelcomeScreen
     if (context.mounted) {
-      Navigator.of(context).pop(); // Dismiss loading spinner dialog
+      if (dialogContextRef != null && Navigator.canPop(dialogContextRef!)) {
+        Navigator.of(dialogContextRef!).pop(); // Dismiss loading spinner dialog safely
+      }
       bleCubit.disconnect();
     }
   }
