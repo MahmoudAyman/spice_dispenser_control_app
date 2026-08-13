@@ -8,6 +8,7 @@ import '../../../bluetooth/presentation/cubit/bluetooth_state.dart';
 import '../../../container_management/data/models/slot_model.dart';
 import '../../../sync/services/recipe_storage_service.dart';
 import '../../../recipes/data/models/recipe_model.dart';
+import '../../../slots/presentation/screens/container_management_screen.dart';
 import 'main_layout_screen.dart';
 
 class DashboardScreen extends StatefulWidget {
@@ -731,16 +732,48 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     // 2. Centralized Warnings & Alerts panel (Central command for levels, live alerts and expiries)
                     _buildNotificationsSection(activeNotifications),
                     
+                    const SizedBox(height: 24),
+
+                    // NEW: Manual Dispense Widget
+                    _buildManualDispenseCard(isConnected),
+
                     const SizedBox(height: 32),
 
-                    // 3. Spice Containers Section Title
-                    const Text(
-                      'Spice Containers',
-                      style: TextStyle(
-                        fontSize: 20,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF0F172A), // Slate 900
-                      ),
+                    // 3. Spice Containers Section Title with Manage All action
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text(
+                          'Spice Containers',
+                          style: TextStyle(
+                            fontSize: 20,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A), // Slate 900
+                          ),
+                        ),
+                        TextButton(
+                          onPressed: () {
+                            Navigator.push(
+                              context,
+                              MaterialPageRoute(
+                                builder: (_) => ContainerManagementScreen(
+                                  bleService: context.read<BluetoothCubit>().bleService,
+                                ),
+                              ),
+                            ).then((_) {
+                              _loadData();
+                            });
+                          },
+                          child: const Text(
+                            'Manage All',
+                            style: TextStyle(
+                              fontSize: 14,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF2563EB),
+                            ),
+                          ),
+                        ),
+                      ],
                     ),
                     const SizedBox(height: 16),
 
@@ -879,110 +912,476 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildSlotsGrid() {
-    return GridView.builder(
-      shrinkWrap: true,
-      physics: const NeverScrollableScrollPhysics(),
-      itemCount: slots.length,
-      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-        crossAxisCount: 2,
-        crossAxisSpacing: 16,
-        mainAxisSpacing: 16,
-        childAspectRatio: 1.15,
-      ),
-      itemBuilder: (context, index) {
-        final slot = slots[index];
-        final isLow = slot.level <= 20;
+    return SizedBox(
+      height: 240,
+      child: GridView.builder(
+        scrollDirection: Axis.horizontal,
+        physics: const BouncingScrollPhysics(),
+        itemCount: slots.length,
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 12,
+          mainAxisSpacing: 12,
+          childAspectRatio: 0.66,
+        ),
+        itemBuilder: (context, index) {
+          final slot = slots[index];
+          final isLow = slot.level <= 20;
 
-        return Container(
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isLow ? const Color(0xFFFEF2F2) : const Color(0xFFF1F5F9),
-              width: 1.5,
-            ),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withOpacity(0.015),
-                blurRadius: 10,
-                offset: const Offset(0, 4),
+          return Container(
+            width: 170,
+            decoration: BoxDecoration(
+              color: Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: isLow ? const Color(0xFFFEF2F2) : const Color(0xFFF1F5F9),
+                width: 1.5,
               ),
-            ],
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(0.015),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
+                ),
+              ],
+            ),
+            child: Padding(
+              padding: const EdgeInsets.all(12.0),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      Text(
+                        'Slot ${slot.slotNumber}',
+                        style: const TextStyle(
+                          fontSize: 11,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF94A3B8),
+                        ),
+                      ),
+                      if (isLow)
+                        const Icon(
+                          Icons.warning_amber_rounded,
+                          color: Color(0xFFEF4444),
+                          size: 16,
+                        ),
+                    ],
+                  ),
+                  Text(
+                    slot.spiceName.isEmpty ? 'Empty Slot' : slot.spiceName,
+                    style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF0F172A),
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                  Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                        children: [
+                          Text(
+                            '${slot.level}%',
+                            style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
+                              color: isLow ? const Color(0xFFEF4444) : const Color(0xFF64748B),
+                            ),
+                          ),
+                          Text(
+                            '${(slot.level * StorageService.getMaxFillGrams() / 100.0).toStringAsFixed(0)}g',
+                            style: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF64748B),
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      ClipRRect(
+                        borderRadius: BorderRadius.circular(4),
+                        child: LinearProgressIndicator(
+                          value: slot.level / 100.0,
+                          minHeight: 5,
+                          backgroundColor: const Color(0xFFF1F5F9),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            _getLevelColor(slot.level),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+
+  Widget _buildManualDispenseCard(bool isConnected) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: const Color(0xFFF1F5F9), width: 1.5),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.015),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
           ),
-          child: Padding(
-            padding: const EdgeInsets.all(16.0),
+        ],
+      ),
+      child: Row(
+        children: [
+          Container(
+            padding: const EdgeInsets.all(12),
+            decoration: BoxDecoration(
+              color: const Color(0xFF2563EB).withOpacity(0.08),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(
+              Icons.touch_app_outlined,
+              color: Color(0xFF2563EB),
+              size: 28,
+            ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      'Slot ${slot.slotNumber}',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: Color(0xFF94A3B8),
-                      ),
-                    ),
-                    if (isLow)
-                      const Icon(
-                        Icons.warning_amber_rounded,
-                        color: Color(0xFFEF4444),
-                        size: 18,
-                      ),
-                  ],
-                ),
-                const Spacer(),
-                Text(
-                  slot.spiceName.isEmpty ? 'Empty Slot' : slot.spiceName,
-                  style: const TextStyle(
+                const Text(
+                  'Quick Manual Dispense',
+                  style: TextStyle(
                     fontSize: 16,
                     fontWeight: FontWeight.bold,
                     color: Color(0xFF0F172A),
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
-                const SizedBox(height: 10),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Text(
-                      '${slot.level}%',
-                      style: TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.bold,
-                        color: isLow ? const Color(0xFFEF4444) : const Color(0xFF64748B),
-                      ),
-                    ),
-                    Text(
-                      '${(slot.level * StorageService.getMaxFillGrams() / 100.0).toStringAsFixed(0)}g',
-                      style: const TextStyle(
-                        fontSize: 12,
-                        fontWeight: FontWeight.w500,
-                        color: Color(0xFF64748B),
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 6),
-                ClipRRect(
-                  borderRadius: BorderRadius.circular(4),
-                  child: LinearProgressIndicator(
-                    value: slot.level / 100.0,
-                    minHeight: 6,
-                    backgroundColor: const Color(0xFFF1F5F9),
-                    valueColor: AlwaysStoppedAnimation<Color>(
-                      _getLevelColor(slot.level),
-                    ),
+                const SizedBox(height: 4),
+                Text(
+                  'Dispense directly from any slot instantly without recipes.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    color: Colors.grey[500],
+                    height: 1.3,
                   ),
                 ),
               ],
             ),
           ),
+          const SizedBox(width: 12),
+          ElevatedButton(
+            onPressed: () {
+              if (!isConnected) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Please connect to the dispenser first.'),
+                    backgroundColor: Colors.redAccent,
+                  ),
+                );
+                return;
+              }
+              _showManualDispenseDialog();
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: isConnected ? const Color(0xFF2563EB) : Colors.grey[300],
+              foregroundColor: Colors.white,
+              elevation: 0,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            child: const Text(
+              'Dispense',
+              style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  void _showManualDispenseDialog() {
+    final nonUnconfiguredSlots = slots.where((s) => s.spiceName.trim().isNotEmpty).toList();
+
+    if (nonUnconfiguredSlots.isEmpty) {
+      showDialog(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Text('No Spices Registered', style: TextStyle(fontWeight: FontWeight.bold)),
+          content: const Text('Please configure your slot containers and assign spice names before dispensing.'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('OK', style: TextStyle(color: Color(0xFF2563EB), fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+      );
+      return;
+    }
+
+    SlotModel selectedSlot = nonUnconfiguredSlots.first;
+    double selectedGrams = 1.0;
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (BuildContext sheetContext) {
+        return StatefulBuilder(
+          builder: (context, setSheetState) {
+            return Container(
+              decoration: const BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
+              ),
+              padding: EdgeInsets.only(
+                left: 24,
+                right: 24,
+                top: 24,
+                bottom: MediaQuery.of(sheetContext).viewInsets.bottom + 32,
+              ),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                    children: [
+                      const Text(
+                        'Manual Dispense',
+                        style: TextStyle(
+                          fontSize: 22,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      IconButton(
+                        onPressed: () => Navigator.pop(sheetContext),
+                        icon: const Icon(Icons.close, color: Colors.grey),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 24),
+                  
+                  // SLOT SELECTOR LABEL
+                  const Text(
+                    'SELECT SPICE CONTAINER',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF64748B),
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+
+                  // SLOT DROPDOWN
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF8FAFC),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFE2E8F0)),
+                    ),
+                    child: DropdownButtonHideUnderline(
+                      child: DropdownButton<SlotModel>(
+                        value: selectedSlot,
+                        isExpanded: true,
+                        dropdownColor: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        onChanged: (newValue) {
+                          if (newValue != null) {
+                            setSheetState(() {
+                              selectedSlot = newValue;
+                            });
+                          }
+                        },
+                        items: nonUnconfiguredSlots.map((slot) {
+                          return DropdownMenuItem<SlotModel>(
+                            value: slot,
+                            child: Text(
+                              'Slot ${slot.slotNumber}: ${slot.spiceName} (${slot.level}%)',
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ),
+
+                  const SizedBox(height: 24),
+
+                  // QUANTITY LABEL
+                  const Text(
+                    'DISPENSE QUANTITY',
+                    style: TextStyle(
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                      color: Color(0xFF64748B),
+                      letterSpacing: 0.8,
+                    ),
+                  ),
+                  const SizedBox(height: 12),
+
+                  // TACILE QUANTITY SELECTOR
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      _buildQuantityAdjustButton(
+                        icon: Icons.remove,
+                        onPressed: () {
+                          if (selectedGrams > 0.5) {
+                            setSheetState(() {
+                              selectedGrams = (selectedGrams - 0.5);
+                            });
+                          }
+                        },
+                      ),
+                      const SizedBox(width: 24),
+                      Text(
+                        '${selectedGrams.toStringAsFixed(1)}g',
+                        style: const TextStyle(
+                          fontSize: 36,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                      const SizedBox(width: 24),
+                      _buildQuantityAdjustButton(
+                        icon: Icons.add,
+                        onPressed: () {
+                          if (selectedGrams < 20.0) {
+                            setSheetState(() {
+                              selectedGrams = (selectedGrams + 0.5);
+                            });
+                          }
+                        },
+                      ),
+                    ],
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // QUICK PRESET BADGES
+                  Row(
+                    mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                    children: [1.0, 2.0, 3.0, 5.0, 10.0].map((preset) {
+                      final isSelected = selectedGrams == preset;
+                      return ChoiceChip(
+                        label: Text(
+                          '${preset.toStringAsFixed(0)}g',
+                          style: TextStyle(
+                            color: isSelected ? Colors.white : const Color(0xFF0F172A),
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        selected: isSelected,
+                        selectedColor: const Color(0xFF2563EB),
+                        onSelected: (bool selected) {
+                          if (selected) {
+                            setSheetState(() {
+                              selectedGrams = preset;
+                            });
+                          }
+                        },
+                        showCheckmark: false,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          side: BorderSide(
+                            color: isSelected ? const Color(0xFF2563EB) : const Color(0xFFCBD5E1),
+                          ),
+                        ),
+                      );
+                    }).toList(),
+                  ),
+
+                  const SizedBox(height: 32),
+
+                  // DISPENSE SUBMIT BUTTON
+                  SizedBox(
+                    width: double.infinity,
+                    height: 52,
+                    child: ElevatedButton(
+                      onPressed: () {
+                        // Close manual sheet first
+                        Navigator.pop(sheetContext);
+
+                        // Instantiate temporary RecipeModel to invoke dispensing sequence
+                        final tempRecipe = RecipeModel(
+                          id: 'manual_dispense_${DateTime.now().millisecondsSinceEpoch}',
+                          name: selectedSlot.spiceName,
+                          ingredients: [
+                            RecipeIngredient(
+                              name: selectedSlot.spiceName,
+                              grams: selectedGrams,
+                            ),
+                          ],
+                          duration: 5,
+                        );
+
+                        // Show standard live progress dialog
+                        _showDispensingDialog(tempRecipe);
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2563EB),
+                        foregroundColor: Colors.white,
+                        elevation: 0,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(16),
+                        ),
+                      ),
+                      child: Text(
+                        'Dispense ${selectedSlot.spiceName}',
+                        style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            );
+          },
         );
       },
+    );
+  }
+
+  Widget _buildQuantityAdjustButton({
+    required IconData icon,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF1F5F9),
+        shape: BoxShape.circle,
+        border: Border.all(color: const Color(0xFFE2E8F0)),
+      ),
+      child: IconButton(
+        onPressed: onPressed,
+        icon: Icon(icon, color: const Color(0xFF0F172A), size: 24),
+        padding: const EdgeInsets.all(12),
+        constraints: const BoxConstraints(),
+      ),
     );
   }
 
