@@ -1,10 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../../core/theme/app_colors.dart';
+import '../../../../core/storage/storage_service.dart';
 import '../../../bluetooth/presentation/cubit/bluetooth_cubit.dart';
 import '../../../bluetooth/presentation/cubit/bluetooth_state.dart';
 import '../../../bluetooth/presentation/screens/connection_screen.dart';
 import '../../../recipes/presentation/screens/recipes_screen.dart';
+import '../../../sync/services/recipe_storage_service.dart';
+import '../../../sync/services/recipe_sync_service.dart';
 import 'dashboard_screen.dart';
 import 'settings_screen.dart';
 
@@ -17,6 +20,40 @@ class MainLayoutScreen extends StatefulWidget {
 
 class MainLayoutScreenState extends State<MainLayoutScreen> {
   int _currentIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    // Always sync recipes with the machine on app startup/initial load
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _syncRecipesToMachine();
+    });
+  }
+
+  void _syncRecipesToMachine() {
+    try {
+      final bluetoothCubit = context.read<BluetoothCubit>();
+      final isConnected = bluetoothCubit.state is BluetoothHandshakeSuccess;
+      if (isConnected && bluetoothCubit.bleService.writeCharacteristic != null) {
+        final macAddress = bluetoothCubit.bleService.connectedDevice?.remoteId.str ?? 
+                           StorageService.getLastMachine()?.deviceId;
+        debugPrint('MainLayout: Auto-syncing recipes with machine for MAC: $macAddress...');
+        final recipeStorageService = RecipeStorageService(macAddress);
+        final recipes = recipeStorageService.getRecipes();
+        final syncService = RecipeSyncService();
+        syncService.syncAllRecipes(
+          bleService: bluetoothCubit.bleService,
+          recipes: recipes,
+        ).then((result) {
+          debugPrint('MainLayout: Auto-sync recipes completed. Success: ${result.isSuccess}');
+        }).catchError((e) {
+          debugPrint('MainLayout: Auto-sync recipes error: $e');
+        });
+      }
+    } catch (e) {
+      debugPrint('MainLayout: Failed to execute recipes auto-sync: $e');
+    }
+  }
 
   void setTab(int index) {
     setState(() {
@@ -37,6 +74,9 @@ class MainLayoutScreenState extends State<MainLayoutScreen> {
       } catch (e) {
         debugPrint('MainLayout: Failed tab switch refresh: $e');
       }
+    } else if (index == 1) {
+      debugPrint('MainLayout: Navigated to Recipes -> Triggering recipe list refresh on machine...');
+      _syncRecipesToMachine();
     }
   }
 

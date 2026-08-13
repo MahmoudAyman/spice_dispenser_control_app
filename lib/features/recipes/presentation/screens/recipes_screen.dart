@@ -852,6 +852,8 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
   List<SlotModel> _availableSlots = [];
   late RecipeStorageService _recipeStorageService;
   bool _isEdit = false;
+  final PageController _pageController = PageController();
+  int _currentPageIndex = 0;
 
   @override
   void initState() {
@@ -913,6 +915,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
   @override
   void dispose() {
     _nameController.dispose();
+    _pageController.dispose();
     for (var entry in _spiceEntries) {
       entry.gramsController.dispose();
     }
@@ -934,6 +937,263 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
         .map((e) => e.selectedSlot!.spiceName.trim().toLowerCase())
         .toSet()
         .length;
+  }
+
+  void _showSummaryAndConfirm() {
+    final name = _nameController.text.trim();
+    if (name.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please enter a recipe name'), backgroundColor: Colors.redAccent),
+      );
+      return;
+    }
+
+    // Duplicate Name Validation for the same machine
+    final existingRecipes = _recipeStorageService.getRecipes();
+    final nameLower = name.toLowerCase();
+    
+    final hasDuplicate = existingRecipes.any((r) {
+      final isSameRecipe = _isEdit && r.id == widget.recipe?.id;
+      return !isSameRecipe && r.name.toLowerCase() == nameLower;
+    });
+
+    if (hasDuplicate) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('A recipe named "$name" already exists for this machine. Please use a unique name.'),
+          backgroundColor: Colors.redAccent,
+        ),
+      );
+      return;
+    }
+
+    if (_spiceEntries.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Please add at least one spice'), backgroundColor: Colors.redAccent),
+      );
+      return;
+    }
+
+    // Validation checks
+    for (int i = 0; i < _spiceEntries.length; i++) {
+      final entry = _spiceEntries[i];
+      if (entry.selectedSlot == null) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Please select a spice slot for spice ${i + 1}'), backgroundColor: Colors.redAccent),
+        );
+        return;
+      }
+
+      final gramsStr = entry.gramsController.text.trim();
+      final grams = double.tryParse(gramsStr);
+      if (grams == null || grams <= 0.0) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Please enter a valid weight in grams for spice ${i + 1}'), backgroundColor: Colors.redAccent),
+        );
+        return;
+      }
+    }
+
+    // Duplicate detection
+    final selectedSlots = _spiceEntries.map((e) => e.selectedSlot!.slotNumber).toList();
+    if (selectedSlots.toSet().length < selectedSlots.length) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Cannot select the same slot multiple times in a recipe'), backgroundColor: Colors.redAccent),
+      );
+      return;
+    }
+
+    // All valid! Now show the summary modal/dialog
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        final totalWeight = _calculateTotalWeight();
+        final duration = totalWeight.ceil() < 5 ? 5 : totalWeight.ceil();
+
+        return Dialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(24)),
+          child: Container(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                // Header
+                Row(
+                  children: [
+                    const Icon(Icons.receipt_long_rounded, color: Color(0xFF1E52E8), size: 28),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        _isEdit ? 'Update Summary' : 'Recipe Summary',
+                        style: const TextStyle(
+                          fontSize: 20,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF0F172A),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 20),
+                
+                // Recipe Name
+                const Text(
+                  'Recipe Name',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  name,
+                  style: const TextStyle(
+                    fontSize: 18,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF0F172A),
+                  ),
+                ),
+                const SizedBox(height: 16),
+                
+                // Ingredients List
+                const Text(
+                  'Ingredients',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.bold,
+                    color: Color(0xFF64748B),
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  constraints: const BoxConstraints(maxHeight: 180),
+                  child: ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: _spiceEntries.length,
+                    itemBuilder: (context, index) {
+                      final entry = _spiceEntries[index];
+                      final slot = entry.selectedSlot;
+                      final grams = double.tryParse(entry.gramsController.text) ?? 0.0;
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 6.0),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Expanded(
+                              child: Text(
+                                '${index + 1}. Slot ${slot?.slotNumber ?? "N/A"}: ${slot?.spiceName ?? "Unknown"}',
+                                style: const TextStyle(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w500,
+                                  color: Color(0xFF334155),
+                                ),
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            Text(
+                              '${grams.toStringAsFixed(1)} g',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF0F172A),
+                              ),
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const Divider(height: 24, color: Color(0xFFE2E8F0)),
+                
+                // Summary Stats Row
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Total Weight',
+                          style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                        ),
+                        Text(
+                          '${totalWeight.toStringAsFixed(1)} g',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF1E52E8),
+                          ),
+                        ),
+                      ],
+                    ),
+                    Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          'Est. Duration',
+                          style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                        ),
+                        Text(
+                          '$duration seconds',
+                          style: const TextStyle(
+                            fontSize: 16,
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF0F172A),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 24),
+                
+                // Action Buttons
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: () => Navigator.pop(context),
+                        style: OutlinedButton.styleFrom(
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          side: const BorderSide(color: Color(0xFFCBD5E1)),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                        ),
+                        child: const Text(
+                          'Back to Edit',
+                          style: TextStyle(color: Color(0xFF475569), fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () {
+                          Navigator.pop(context); // Close summary dialog
+                          _saveAndSyncRecipe(); // Call the actual save logic
+                        },
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: const Color(0xFF1E52E8),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                          elevation: 0,
+                        ),
+                        child: Text(
+                          _isEdit ? 'Sync Changes' : 'Confirm & Sync',
+                          style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold),
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   /// TRANSACTIONAL SYNC & SAVE WITH AUTOMATIC DB ROLLBACK ON FAILURE
@@ -1212,7 +1472,6 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
           );
 
     final totalWeight = _calculateTotalWeight();
-    final selectedSpicesCount = _calculateDistinctSpicesCount();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF8FAFC), // PREMIUM LIGHT GRAY-BLUE FROM FIGMA
@@ -1244,7 +1503,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                       ),
                       const SizedBox(height: 4),
                       Text(
-                        '$selectedSpicesCount / 20 spices',
+                        '${_spiceEntries.isEmpty ? 0 : _currentPageIndex + 1} of ${_spiceEntries.length} Spices (${_calculateDistinctSpicesCount()} unique)',
                         style: const TextStyle(
                           color: Colors.white70,
                           fontSize: 13,
@@ -1256,7 +1515,7 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                 ),
                 // FIGMA COMPLIANT SAVE BUTTON (WHITE BACKGROUND, DISK ICON, BLUE TEXT)
                 ElevatedButton.icon(
-                  onPressed: _saveAndSyncRecipe,
+                  onPressed: _showSummaryAndConfirm,
                   icon: const Icon(Icons.save, color: Color(0xFF1E52E8), size: 18),
                   label: const Text(
                     'Save',
@@ -1351,6 +1610,15 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                           setState(() {
                             _spiceEntries.add(_SpiceEntry(grams: '5'));
                           });
+                          WidgetsBinding.instance.addPostFrameCallback((_) {
+                            if (_pageController.hasClients) {
+                              _pageController.animateToPage(
+                                _spiceEntries.length - 1,
+                                duration: const Duration(milliseconds: 300),
+                                curve: Curves.easeOut,
+                              );
+                            }
+                          });
                         },
                         icon: const Icon(Icons.add, color: Colors.white, size: 18),
                         label: const Text(
@@ -1372,177 +1640,300 @@ class _RecipeFormScreenState extends State<RecipeFormScreen> {
                     ],
                   ),
                   
-                  const SizedBox(height: 16),
-                  
-                  // LIST OF DYNAMIC SPICE ENTRIES
-                  ListView.builder(
-                    shrinkWrap: true,
-                    physics: const NeverScrollableScrollPhysics(),
-                    itemCount: _spiceEntries.length,
-                    itemBuilder: (context, idx) {
-                      final entry = _spiceEntries[idx];
+                  const SizedBox(height: 12),
 
-                      return Container(
-                        margin: const EdgeInsets.only(bottom: 14),
-                        padding: const EdgeInsets.all(16),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          borderRadius: BorderRadius.circular(16),
-                          border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
-                        ),
-                        child: Row(
-                          crossAxisAlignment: CrossAxisAlignment.start,
-                          children: [
-                            // GRAB REORDER HANDLE (DECORATIVE DESIGN AS IN FIGMA)
-                            const Padding(
-                              padding: EdgeInsets.only(top: 14.0),
-                              child: Icon(
-                                Icons.drag_indicator,
-                                color: Color(0xFF94A3B8),
-                                size: 24,
+                  // SPICE HORIZONTAL NAVIGATION CHIPS
+                  if (_spiceEntries.isNotEmpty) ...[
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      physics: const BouncingScrollPhysics(),
+                      child: Row(
+                        children: List.generate(_spiceEntries.length, (idx) {
+                          final isSelected = _currentPageIndex == idx;
+                          final entry = _spiceEntries[idx];
+                          final slotName = entry.selectedSlot?.spiceName.isNotEmpty == true 
+                              ? entry.selectedSlot!.spiceName 
+                              : 'New Spice';
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8.0, bottom: 4.0),
+                            child: ChoiceChip(
+                              label: Text(
+                                '${idx + 1}: $slotName',
+                                style: TextStyle(
+                                  fontWeight: FontWeight.bold,
+                                  fontSize: 13,
+                                  color: isSelected ? Colors.white : const Color(0xFF475569),
+                                ),
                               ),
+                              selected: isSelected,
+                              selectedColor: const Color(0xFF1E52E8),
+                              backgroundColor: Colors.white,
+                              side: BorderSide(
+                                color: isSelected ? const Color(0xFF1E52E8) : const Color(0xFFE2E8F0),
+                                width: 1.5,
+                              ),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20),
+                              ),
+                              onSelected: (_) {
+                                _pageController.animateToPage(
+                                  idx,
+                                  duration: const Duration(milliseconds: 300),
+                                  curve: Curves.easeOut,
+                                );
+                              },
                             ),
-                            const SizedBox(width: 8),
-                            
-                            // MAIN FIELDS SECTION
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  // SPICE SLOT SELECTION
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: Column(
-                                          crossAxisAlignment: CrossAxisAlignment.start,
-                                          children: [
-                                            const Text(
-                                              'Spice Slot',
-                                              style: TextStyle(
-                                                color: Color(0xFF64748B),
-                                                fontSize: 12,
-                                                fontWeight: FontWeight.bold,
-                                              ),
+                          );
+                        }),
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                  ],
+
+                  // PAGEVIEW CONTAINER FOR SPICE ENTRIES
+                  if (_spiceEntries.isEmpty)
+                    Container(
+                      width: double.infinity,
+                      height: 180,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(16),
+                        border: Border.all(color: const Color(0xFFE2E8F0), width: 1.5),
+                      ),
+                      child: Text(
+                        'No spices added yet. Tap "Add Spice" above.',
+                        style: TextStyle(color: Colors.grey[500], fontWeight: FontWeight.w500),
+                      ),
+                    )
+                  else ...[
+                    SizedBox(
+                      height: 255,
+                      child: PageView.builder(
+                        controller: _pageController,
+                        itemCount: _spiceEntries.length,
+                        onPageChanged: (idx) {
+                          setState(() {
+                            _currentPageIndex = idx;
+                          });
+                        },
+                        itemBuilder: (context, idx) {
+                          final entry = _spiceEntries[idx];
+
+                          return Container(
+                            margin: const EdgeInsets.symmetric(horizontal: 2),
+                            padding: const EdgeInsets.all(16),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              borderRadius: BorderRadius.circular(16),
+                              border: Border.all(color: const Color(0xFF1E52E8).withOpacity(0.3), width: 1.5),
+                              boxShadow: [
+                                BoxShadow(
+                                  color: Colors.black.withOpacity(0.02),
+                                  blurRadius: 8,
+                                  offset: const Offset(0, 4),
+                                ),
+                              ],
+                            ),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                // CARD HEADER: TITLE & DELETE
+                                Row(
+                                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                                  children: [
+                                    Row(
+                                      children: [
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                                          decoration: BoxDecoration(
+                                            color: const Color(0xFFEFF6FF),
+                                            borderRadius: BorderRadius.circular(8),
+                                          ),
+                                          child: Text(
+                                            'Spice ${idx + 1} of ${_spiceEntries.length}',
+                                            style: const TextStyle(
+                                              fontWeight: FontWeight.bold,
+                                              fontSize: 12,
+                                              color: Color(0xFF1E52E8),
                                             ),
-                                            const SizedBox(height: 6),
-                                            DropdownButtonFormField<SlotModel>(
-                                              value: entry.selectedSlot,
-                                              isExpanded: true,
-                                              style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.black, fontSize: 15),
-                                              decoration: InputDecoration(
-                                                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-                                                border: OutlineInputBorder(
-                                                  borderRadius: BorderRadius.circular(12),
-                                                  borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                                                ),
-                                                enabledBorder: OutlineInputBorder(
-                                                  borderRadius: BorderRadius.circular(12),
-                                                  borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
-                                                ),
-                                                focusedBorder: OutlineInputBorder(
-                                                  borderRadius: BorderRadius.circular(12),
-                                                  borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
-                                                ),
-                                              ),
-                                              items: dropdownSlots.map((slot) {
-                                                final displayText = slot.slotNumber == 0 
-                                                    ? slot.spiceName // Offline fallback
-                                                    : 'Slot ${slot.slotNumber}: ${slot.spiceName}';
-                                                return DropdownMenuItem<SlotModel>(
-                                                  value: slot,
-                                                  child: Text(
-                                                    displayText,
-                                                    overflow: TextOverflow.ellipsis,
-                                                  ),
-                                                );
-                                              }).toList(),
-                                              onChanged: (val) {
-                                                setState(() {
-                                                  entry.selectedSlot = val;
-                                                });
-                                              },
-                                            ),
-                                          ],
+                                          ),
                                         ),
+                                      ],
+                                    ),
+                                    IconButton(
+                                      icon: const Icon(Icons.delete_outline, color: Color(0xFFEF4444), size: 22),
+                                      onPressed: () {
+                                        setState(() {
+                                          _spiceEntries.removeAt(idx);
+                                          // Keep current page index bounded
+                                          if (_currentPageIndex >= _spiceEntries.length && _spiceEntries.isNotEmpty) {
+                                            _currentPageIndex = _spiceEntries.length - 1;
+                                          }
+                                        });
+                                      },
+                                    ),
+                                  ],
+                                ),
+                                const Divider(height: 12, color: Color(0xFFE2E8F0)),
+                                
+                                // SPICE SLOT SELECTION DROPDOWN
+                                const Text(
+                                  'Spice Slot',
+                                  style: TextStyle(
+                                    color: Color(0xFF64748B),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                DropdownButtonFormField<SlotModel>(
+                                  value: entry.selectedSlot,
+                                  isExpanded: true,
+                                  style: const TextStyle(fontWeight: FontWeight.w500, color: Colors.black, fontSize: 14),
+                                  decoration: InputDecoration(
+                                    contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(10),
+                                      borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
+                                    ),
+                                  ),
+                                  items: dropdownSlots.map((slot) {
+                                    final displayText = slot.slotNumber == 0 
+                                        ? slot.spiceName // Offline fallback
+                                        : 'Slot ${slot.slotNumber}: ${slot.spiceName}';
+                                    return DropdownMenuItem<SlotModel>(
+                                      value: slot,
+                                      child: Text(
+                                        displayText,
+                                        overflow: TextOverflow.ellipsis,
                                       ),
-                                      const SizedBox(width: 10),
-                                      // RED TRASH ICON ALIGNED CENTRALLY WITH DROP BOX FROM FIGMA
-                                      Padding(
-                                        padding: const EdgeInsets.only(top: 18.0),
-                                        child: IconButton(
-                                          icon: const Icon(Icons.delete, color: Color(0xFFEF4444), size: 24),
-                                          onPressed: () {
-                                            setState(() {
-                                              _spiceEntries.removeAt(idx);
-                                            });
+                                    );
+                                  }).toList(),
+                                  onChanged: (val) {
+                                    setState(() {
+                                      entry.selectedSlot = val;
+                                    });
+                                  },
+                                ),
+                                
+                                const SizedBox(height: 10),
+                                
+                                // QUANTITY (GRAMS) WITH TACTILE INCREMENT/DECREMENT
+                                const Text(
+                                  'Quantity (grams)',
+                                  style: TextStyle(
+                                    color: Color(0xFF64748B),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Row(
+                                  children: [
+                                    IconButton(
+                                      icon: const Icon(Icons.remove_circle_outline, color: Color(0xFF64748B), size: 24),
+                                      onPressed: () {
+                                        final val = double.tryParse(entry.gramsController.text) ?? 5.0;
+                                        if (val > 0.5) {
+                                          setState(() {
+                                            entry.gramsController.text = (val - 0.5).toStringAsFixed(1);
+                                          });
+                                        }
+                                      },
+                                    ),
+                                    Expanded(
+                                      child: SizedBox(
+                                        height: 38,
+                                        child: TextField(
+                                          controller: entry.gramsController,
+                                          keyboardType: const TextInputType.numberWithOptions(decimal: true),
+                                          textAlign: TextAlign.center,
+                                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                                          decoration: InputDecoration(
+                                            contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+                                            border: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(10),
+                                              borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
+                                            ),
+                                            enabledBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(10),
+                                              borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
+                                            ),
+                                            focusedBorder: OutlineInputBorder(
+                                              borderRadius: BorderRadius.circular(10),
+                                              borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
+                                            ),
+                                          ),
+                                          onChanged: (_) {
+                                            setState(() {});
                                           },
                                         ),
                                       ),
-                                    ],
-                                  ),
-                                  
-                                  const SizedBox(height: 14),
-                                  
-                                  // QUANTITY (GRAMS) TEXT INPUT
-                                  const Text(
-                                    'Quantity (grams)',
-                                    style: TextStyle(
-                                      color: Color(0xFF64748B),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.bold,
                                     ),
-                                  ),
-                                  const SizedBox(height: 6),
-                                  Row(
-                                    children: [
-                                      Expanded(
-                                        child: SizedBox(
-                                          height: 44,
-                                          child: TextField(
-                                            controller: entry.gramsController,
-                                            keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15),
-                                            decoration: InputDecoration(
-                                              contentPadding: const EdgeInsets.symmetric(horizontal: 16),
-                                              border: OutlineInputBorder(
-                                                borderRadius: BorderRadius.circular(12),
-                                                borderSide: const BorderSide(color: Color(0xFFCBD5E1)),
-                                              ),
-                                              enabledBorder: OutlineInputBorder(
-                                                borderRadius: BorderRadius.circular(12),
-                                                borderSide: const BorderSide(color: Color(0xFFE2E8F0), width: 1.5),
-                                              ),
-                                              focusedBorder: OutlineInputBorder(
-                                                borderRadius: BorderRadius.circular(12),
-                                                borderSide: const BorderSide(color: Color(0xFF2563EB), width: 1.5),
-                                              ),
-                                            ),
-                                            onChanged: (_) {
-                                              setState(() {});
-                                            },
-                                          ),
-                                        ),
+                                    IconButton(
+                                      icon: const Icon(Icons.add_circle_outline, color: Color(0xFF1E52E8), size: 24),
+                                      onPressed: () {
+                                        final val = double.tryParse(entry.gramsController.text) ?? 5.0;
+                                        setState(() {
+                                          entry.gramsController.text = (val + 0.5).toStringAsFixed(1);
+                                        });
+                                      },
+                                    ),
+                                    const SizedBox(width: 8),
+                                    const Text(
+                                      'g',
+                                      style: TextStyle(
+                                        color: Color(0xFF64748B),
+                                        fontSize: 14,
+                                        fontWeight: FontWeight.bold,
                                       ),
-                                      const SizedBox(width: 12),
-                                      // OUTSIDE 'g' SYMBOL FROM FIGMA
-                                      const Text(
-                                        'g',
-                                        style: TextStyle(
-                                          color: Color(0xFF64748B),
-                                          fontSize: 16,
-                                          fontWeight: FontWeight.bold,
-                                        ),
-                                      ),
-                                    ],
-                                  ),
-                                ],
-                              ),
+                                    ),
+                                  ],
+                                ),
+                              ],
                             ),
-                          ],
+                          );
+                        },
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        IconButton(
+                          icon: const Icon(Icons.chevron_left, color: Color(0xFF64748B), size: 20),
+                          onPressed: _currentPageIndex > 0 ? () {
+                            _pageController.previousPage(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeOut,
+                            );
+                          } : null,
                         ),
-                      );
-                    },
-                  ),
+                        Text(
+                          'Swipe or tap chips to navigate',
+                          style: TextStyle(color: Colors.grey[500], fontSize: 11),
+                        ),
+                        IconButton(
+                          icon: const Icon(Icons.chevron_right, color: Color(0xFF64748B), size: 20),
+                          onPressed: _currentPageIndex < _spiceEntries.length - 1 ? () {
+                            _pageController.nextPage(
+                              duration: const Duration(milliseconds: 300),
+                              curve: Curves.easeOut,
+                            );
+                          } : null,
+                        ),
+                      ],
+                    ),
+                  ],
                   
                   const SizedBox(height: 12),
                   
