@@ -57,6 +57,9 @@ class ProtocolService {
   levelsController =
   StreamController.broadcast();
 
+  StreamSubscription? statusSubscription;
+  StreamSubscription? syncSubscription;
+
   /// MACHINE VERSION
 
   int machineVersion = 1;
@@ -72,10 +75,11 @@ class ProtocolService {
       characteristic,
       ) async {
 
+    await statusSubscription?.cancel();
     await characteristic
         .setNotifyValue(true);
 
-    characteristic.lastValueStream
+    statusSubscription = characteristic.lastValueStream
         .listen(
           (value) {
 
@@ -85,74 +89,77 @@ class ProtocolService {
 
         try {
 
-          final jsonString =
+          final jsonStrings =
           PacketManager.mergePackets(
             value,
+            characteristic.uuid.toString(),
           );
 
-          print(
-            'RAW STATUS RESPONSE: $jsonString',
-          );
-
-          final data =
-          jsonDecode(
-            jsonString,
-          );
-
-          print(
-            'PARSED STATUS RESPONSE: $data',
-          );
-
-          final parsed =
-          ProtocolParser.parse(
-            data,
-          );
-
-          /// ACK
-
-          if (parsed
-          is AckResponse) {
-
-            ackController.add(
-              parsed,
+          for (final jsonString in jsonStrings) {
+            print(
+              'RAW STATUS RESPONSE: $jsonString',
             );
-          }
 
-          /// SETUP READY FOR NEXT SLOT
-
-          else if (parsed
-          is SetupReadyForSlotResponse) {
-
-            setupReadyController.add(
-              parsed,
+            final data =
+            jsonDecode(
+              jsonString,
             );
-          }
 
-          /// STATUS
-
-          else if (parsed
-          is StatusResponse) {
-
-            machineVersion =
-                data['version'] ?? 1;
-
-            machineInitialized =
-                data['initialized']
-                    ?? false;
-
-            statusController.add(
-              parsed,
+            print(
+              'PARSED STATUS RESPONSE: $data',
             );
-          }
 
-          /// ALERT
-
-          else if (parsed
-          is AlertResponse) {
-
-            alertController.add(
-              parsed,
+            final parsed =
+            ProtocolParser.parse(
+              data,
             );
+
+            /// ACK
+
+            if (parsed
+            is AckResponse) {
+
+              ackController.add(
+                parsed,
+              );
+            }
+
+            /// SETUP READY FOR NEXT SLOT
+
+            else if (parsed
+            is SetupReadyForSlotResponse) {
+
+              setupReadyController.add(
+                parsed,
+              );
+            }
+
+            /// STATUS
+
+            else if (parsed
+            is StatusResponse) {
+
+              machineVersion =
+                  data['version'] ?? 1;
+
+              machineInitialized =
+                  data['initialized']
+                      ?? false;
+
+              statusController.add(
+                parsed,
+              );
+            }
+
+            /// ALERT
+
+            else if (parsed
+            is AlertResponse) {
+
+              alertController.add(
+                parsed,
+              );
+            }
           }
 
         } catch (e) {
@@ -172,10 +179,11 @@ class ProtocolService {
       characteristic,
       ) async {
 
+    await syncSubscription?.cancel();
     await characteristic
         .setNotifyValue(true);
 
-    characteristic.lastValueStream
+    syncSubscription = characteristic.lastValueStream
         .listen(
           (value) {
 
@@ -185,45 +193,48 @@ class ProtocolService {
 
         try {
 
-          final jsonString =
+          final jsonStrings =
           PacketManager.mergePackets(
             value,
+            characteristic.uuid.toString(),
           );
 
-          print(
-            'RAW SYNC RESPONSE: $jsonString',
-          );
-
-          final data =
-          jsonDecode(
-            jsonString,
-          );
-
-          print(
-            'PARSED SYNC RESPONSE: $data',
-          );
-
-          final parsed =
-          ProtocolParser.parse(
-            data,
-          );
-
-          if (parsed
-          is LevelsResponse) {
-
-            levelsController.add(
-              parsed,
+          for (final jsonString in jsonStrings) {
+            print(
+              'RAW SYNC RESPONSE: $jsonString',
             );
-          }
 
-          else if (parsed is ManifestResponse) {
-            manifestController.add(
-              parsed,
+            final data =
+            jsonDecode(
+              jsonString,
             );
-          } else if (parsed is SpiceDefinitionResponse) {
-            spiceDefinitionController.add(
-              parsed,
+
+            print(
+              'PARSED SYNC RESPONSE: $data',
             );
+
+            final parsed =
+            ProtocolParser.parse(
+              data,
+            );
+
+            if (parsed
+            is LevelsResponse) {
+
+              levelsController.add(
+                parsed,
+              );
+            }
+
+            else if (parsed is ManifestResponse) {
+              manifestController.add(
+                parsed,
+              );
+            } else if (parsed is SpiceDefinitionResponse) {
+              spiceDefinitionController.add(
+                parsed,
+              );
+            }
           }
 
         } catch (e) {
@@ -353,7 +364,8 @@ class ProtocolService {
   /// DISPOSE
 
   void dispose() {
-
+    statusSubscription?.cancel();
+    syncSubscription?.cancel();
     ackController.close();
 
     statusController.close();

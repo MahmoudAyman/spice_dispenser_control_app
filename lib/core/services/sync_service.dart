@@ -11,22 +11,22 @@ import 'ble_service.dart';
 
 class SyncService {
   final BleService bleService;
-  final ProtocolService protocolService;
+  final ProtocolService protocol;
 
   SyncService({
     required this.bleService,
-    required this.protocolService,
+    required this.protocol,
   });
 
   /// START LISTENING
   void startListening() {
-    protocolService.levelsController.stream.listen(
+    protocol.levelsController.stream.listen(
       (levels) async {
         await handleLevels(levels);
       },
     );
 
-    protocolService.manifestController.stream.listen(
+    protocol.manifestController.stream.listen(
       (manifest) async {
         await handleManifest(manifest);
       },
@@ -80,7 +80,7 @@ class SyncService {
     }
 
     await StorageService.saveAppVersion(
-      protocolService.machineVersion,
+      protocol.machineVersion,
     );
   }
 

@@ -10,6 +10,7 @@ import '../../../setup/presentation/screens/setup_welcome_screen.dart';
 import '../cubit/bluetooth_cubit.dart';
 import '../cubit/bluetooth_state.dart';
 import '../widgets/device_card.dart';
+import '../../../container_management/presentation/cubit/spice_cubit.dart';
 
 class ConnectionScreen extends StatefulWidget {
   const ConnectionScreen({super.key});
@@ -125,31 +126,33 @@ class _ConnectionScreenState extends State<ConnectionScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return BlocListener<BluetoothCubit, BluetoothState>(
-      listener: (context, state) {
-        if (state is BluetoothHandshakeSuccess) {
-          if (state.isConfigured) {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const MainLayoutScreen()),
-            );
-          } else {
-            Navigator.pushReplacement(
-              context,
-              MaterialPageRoute(builder: (_) => const SetupWelcomeScreen()),
+    return Scaffold(
+      backgroundColor: const Color(0xFFF1F5F9),
+      body: BlocListener<BluetoothCubit, BluetoothState>(
+        listener: (context, state) {
+          if (state is BluetoothHandshakeSuccess) {
+            if (state.isConfigured) {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(builder: (_) => const MainLayoutScreen()),
+              );
+            } else {
+              Navigator.pushReplacement(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const SetupWelcomeScreen(),
+                ),
+              );
+            }
+          }
+
+          if (state is BluetoothHandshakeFailed) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Authentication Failed')),
             );
           }
-        }
-
-        if (state is BluetoothHandshakeFailed) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Authentication Failed')),
-          );
-        }
-      },
-      child: Scaffold(
-        backgroundColor: const Color(0xFFF1F5F9),
-        body: SafeArea(
+        },
+        child: SafeArea(
           child: Column(
             children: [
               /// HEADER

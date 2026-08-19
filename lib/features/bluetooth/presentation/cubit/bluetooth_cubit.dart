@@ -33,8 +33,8 @@ class BluetoothCubit
 
     syncService = SyncService(
       bleService: bleService,
-      protocolService:
-      bleService.protocolService,
+      protocol:
+      bleService.protocol,
     );
   }
 
