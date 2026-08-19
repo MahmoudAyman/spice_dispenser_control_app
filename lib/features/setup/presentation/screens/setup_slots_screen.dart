@@ -9,6 +9,9 @@ import '../../../bluetooth/presentation/cubit/bluetooth_cubit.dart';
 import '../../../bluetooth/presentation/cubit/bluetooth_state.dart';
 import '../../../bluetooth/presentation/screens/connection_screen.dart';
 import '../../../container_management/data/models/slot_model.dart';
+import '../../../container_management/presentation/cubit/spice_cubit.dart';
+import '../../../../features/slots/presentation/widgets/spice_selection_dialog.dart';
+import '../../../container_management/data/models/spice_definition_model.dart';
 import '../widgets/setup_step_indicator.dart';
 import 'setup_complete_screen.dart';
 
@@ -31,6 +34,7 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
   String _homingStatus = 'Initializing...';
   StreamSubscription? _statusSubscription;
   StreamSubscription? _setupReadySubscription;
+  Timer? _homingPollTimer;
 
   final List<TextEditingController> spiceControllers = List.generate(
     totalSlots,
@@ -61,14 +65,17 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
     _isHoming = true;
     _homingStatus = 'Finding home...';
 
-    _statusSubscription = bluetoothCubit.bleService.protocolService.statusController.stream.listen((status) {
+    _statusSubscription = bluetoothCubit.bleService.protocol.statusController.stream.listen((status) {
       debugPrint('HOMING CHECK -> Received status update: state=${status.state}, detail=${status.detail}, msg=${status.statusMsg}');
       
-      if (status.state.toLowerCase() == 'setup') {
-        final detail = status.detail ?? '';
-        final isHomingDetail = detail.contains('Finding home') || detail.contains('Initializing configuration');
+      final detail = status.detail ?? '';
+      final msg = status.statusMsg ?? '';
 
-        if (isHomingDetail) {
+      if (status.state.toLowerCase() == 'setup') {
+        final isHomingDetail = detail.contains('Finding home') || detail.contains('Initializing configuration');
+        final isSetupReady = msg.contains('Setup Slot') || detail.contains('Awaiting name configuration');
+
+        if (isHomingDetail && !isSetupReady) {
           setState(() {
             _isHoming = true;
             _homingStatus = status.detail ?? 'Finding home...';
@@ -87,7 +94,7 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
       }
     });
 
-    _setupReadySubscription = bluetoothCubit.bleService.protocolService.setupReadyController.stream.listen((ready) {
+    _setupReadySubscription = bluetoothCubit.bleService.protocol.setupReadyController.stream.listen((ready) {
       debugPrint('HOMING CHECK -> Received setup ready for slot: ${ready.slot}');
       if (ready.slot >= 1) {
         setState(() {
@@ -97,13 +104,25 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
       }
     });
 
-    // Request initial status from machine
+    // Start periodic polling to request status every 2 seconds until homing is complete
+    _homingPollTimer = Timer.periodic(const Duration(seconds: 2), (timer) {
+      try {
+        debugPrint('HOMING CHECK -> Polling status from machine...');
+        bluetoothCubit.bleService.writeCommand(
+          command: {'type': 'get_status'},
+        );
+      } catch (e) {
+        debugPrint('HOMING CHECK -> Failed status poll command transmission: $e');
+      }
+    });
+
+    // Request initial status immediately
     try {
       bluetoothCubit.bleService.writeCommand(
         command: {'type': 'get_status'},
       );
     } catch (e) {
-      debugPrint('HOMING CHECK -> Failed to send get_status: $e');
+      debugPrint('HOMING CHECK -> Failed to send initial get_status: $e');
     }
   }
 
@@ -112,6 +131,8 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
     _statusSubscription = null;
     _setupReadySubscription?.cancel();
     _setupReadySubscription = null;
+    _homingPollTimer?.cancel();
+    _homingPollTimer = null;
   }
 
   @override
@@ -238,7 +259,7 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
           final completer = Completer<void>();
           late StreamSubscription sub;
 
-          sub = bluetoothCubit.bleService.protocolService.setupReadyController.stream.listen((ready) {
+          sub = bluetoothCubit.bleService.protocol.setupReadyController.stream.listen((ready) {
             debugPrint('ONBOARDING SYNC -> Received setup_ready_for_slot for slot: ${ready.slot}');
             if (ready.slot == nextSlotId) {
               completer.complete();
@@ -586,7 +607,7 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
 
             // Spice Name Field
             const Text(
-              'Spice Name',
+              'Select a Spice',
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.bold,
@@ -594,19 +615,36 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
               ),
             ),
             const SizedBox(height: 8),
-            TextField(
-              controller: spiceNameController,
-              onChanged: (_) => setState(() {}),
-              decoration: InputDecoration(
-                hintText: 'e.g., Smoked Paprika',
-                filled: true,
-                fillColor: const Color(0xFFF8FAFC),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
-                  borderSide: BorderSide.none,
+            GestureDetector(
+              onTap: () async {
+                final selectedSpice = await showDialog<SpiceDefinition>(
+                  context: context,
+                  builder: (_) => BlocProvider.value(
+                    value: context.read<SpiceCubit>(),
+                    child: const SpiceSelectionDialog(),
+                  ),
+                );
+                if (selectedSpice != null) {
+                  spiceNameController.text = selectedSpice.name;
+                  setState(() {});
+                }
+              },
+              child: AbsorbPointer(
+                child: TextField(
+                  controller: spiceNameController,
+                  onChanged: (_) => setState(() {}),
+                  decoration: InputDecoration(
+                    hintText: 'e.g., Smoked Paprika',
+                    filled: true,
+                    fillColor: const Color(0xFFF8FAFC),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                    border: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(16),
+                      borderSide: BorderSide.none,
+                    ),
+                    prefixIcon: const Icon(Icons.restaurant_menu, size: 20),
+                  ),
                 ),
-                prefixIcon: const Icon(Icons.restaurant_menu, size: 20),
               ),
             ),
             const SizedBox(height: 20),

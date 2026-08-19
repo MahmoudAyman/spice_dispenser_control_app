@@ -6,13 +6,22 @@ import 'spice_state.dart';
 
 class SpiceCubit extends Cubit<SpiceState> {
   final SpiceSyncService _spiceSyncService;
+  List<SpiceDefinition>? _spices;
 
   SpiceCubit(this._spiceSyncService) : super(SpiceInitial());
 
   Future<void> fetchSpices() async {
+    if (state is SpiceLoading) return;
+
+    if (_spices != null && _spices!.isNotEmpty) {
+      emit(SpiceLoaded(_spices!));
+      return;
+    }
+
     try {
       emit(SpiceLoading());
       final spices = await _spiceSyncService.fetchSpiceDefinitions();
+      _spices = spices;
       emit(SpiceLoaded(spices));
     } catch (e) {
       emit(SpiceError('Failed to fetch spices: $e'));
@@ -25,6 +34,7 @@ class SpiceCubit extends Cubit<SpiceState> {
       final definition = SpiceDefinition(name: name, density: density);
       final ack = await _spiceSyncService.addNewSpiceDefinition(definition);
       if (ack.isSuccess) {
+        clearSpices();
         await fetchSpices();
       } else {
         emit(SpiceError('Failed to add spice: ${ack.status}'));
@@ -32,5 +42,10 @@ class SpiceCubit extends Cubit<SpiceState> {
     } catch (e) {
       emit(SpiceError('Failed to add spice: $e'));
     }
+  }
+
+  void clearSpices() {
+    _spices = null;
+    emit(SpiceInitial());
   }
 }

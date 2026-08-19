@@ -358,7 +358,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
                   // Successfully ACKed! Start listening to physical status stream
                   debugPrint('Dispense command accepted! Listening to live progress stream...');
                   
-                  statusSubscription = bluetoothCubit.bleService.protocolService.statusController.stream.listen((status) {
+                  statusSubscription = bluetoothCubit.bleService.protocol.statusController.stream.listen((status) {
                     debugPrint('Dispense Live Progress: state=${status.state}, progress=${status.progress}');
                     
                     setDialogState(() {
@@ -385,7 +385,7 @@ class _RecipesScreenState extends State<RecipesScreen> {
                   });
 
                   // Listen to alert stream in case of mismatch/error
-                  alertSubscription = bluetoothCubit.bleService.protocolService.alertController.stream.listen((alert) {
+                  alertSubscription = bluetoothCubit.bleService.protocol.alertController.stream.listen((alert) {
                     debugPrint('Alert received during dispense: ${alert.code}, blocking=${alert.blocking}');
                     
                     if (!alert.blocking) {

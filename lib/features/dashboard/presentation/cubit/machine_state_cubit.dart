@@ -36,7 +36,7 @@ class MachineStateCubit
 
     statusSub =
         bleService
-            .protocolService
+            .protocol
             .statusController
             .stream
             .listen(
@@ -55,7 +55,7 @@ class MachineStateCubit
 
     alertSub =
         bleService
-            .protocolService
+            .protocol
             .alertController
             .stream
             .listen(

@@ -4,31 +4,23 @@ import 'package:flutter_bloc/flutter_bloc.dart';
 import '../../../bluetooth/presentation/cubit/bluetooth_cubit.dart';
 import '../../../bluetooth/presentation/cubit/bluetooth_state.dart';
 import '../../../bluetooth/presentation/screens/connection_screen.dart';
+import '../../../container_management/presentation/cubit/spice_cubit.dart';
 import '../widgets/setup_step_indicator.dart';
 import 'setup_slots_screen.dart';
 
-class SetupWelcomeScreen
-    extends StatefulWidget {
-
+class SetupWelcomeScreen extends StatefulWidget {
   const SetupWelcomeScreen({
     super.key,
   });
 
   @override
-  State<SetupWelcomeScreen>
-  createState() =>
-      _SetupWelcomeScreenState();
+  State<SetupWelcomeScreen> createState() => _SetupWelcomeScreenState();
 }
 
-class _SetupWelcomeScreenState
-    extends State<
-        SetupWelcomeScreen> {
-
+class _SetupWelcomeScreenState extends State<SetupWelcomeScreen> {
   bool loading = false;
 
-  Future<void> continueSetup()
-  async {
-
+  Future<void> continueSetup() async {
     setState(() {
       loading = true;
     });
@@ -41,27 +33,17 @@ class _SetupWelcomeScreenState
 
     Navigator.push(
       context,
-
       PageRouteBuilder(
-        transitionDuration:
-        const Duration(
+        transitionDuration: const Duration(
           milliseconds: 400,
         ),
-
-        pageBuilder:
-            (_, __, ___) =>
-        const SetupSlotsScreen(),
-
-        transitionsBuilder:
-            (_, animation, __, child) {
-
+        pageBuilder: (_, __, ___) => const SetupSlotsScreen(),
+        transitionsBuilder: (_, animation, __, child) {
           return SlideTransition(
             position: Tween(
-              begin:
-              const Offset(1, 0),
+              begin: const Offset(1, 0),
               end: Offset.zero,
             ).animate(animation),
-
             child: child,
           );
         },

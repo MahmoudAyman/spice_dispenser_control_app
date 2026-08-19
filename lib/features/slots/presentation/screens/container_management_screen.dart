@@ -8,6 +8,9 @@ import '../../../sync/services/slot_sync_service.dart';
 import '../cubit/slot_cubit.dart';
 import '../cubit/slot_state.dart';
 import '../widgets/slot_grid_tile.dart';
+import '../../../container_management/data/models/spice_definition_model.dart';
+import '../../../container_management/presentation/cubit/spice_cubit.dart';
+import '../widgets/spice_selection_dialog.dart';
 
 class ContainerManagementScreen extends StatelessWidget {
   final BleService bleService;
@@ -229,8 +232,11 @@ class _ContainerManagementViewState extends State<_ContainerManagementView> {
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      builder: (_) => BlocProvider.value(
-        value: cubit,
+      builder: (_) => MultiBlocProvider(
+        providers: [
+          BlocProvider.value(value: cubit),
+          BlocProvider.value(value: context.read<SpiceCubit>()),
+        ],
         child: _SlotEditSheet(slot: slot),
       ),
     );
@@ -434,15 +440,31 @@ class _SlotEditSheetState extends State<_SlotEditSheet> {
             const SizedBox(height: 20),
 
             // Spice name field
-            TextField(
-              controller: _nameController,
-              decoration: InputDecoration(
-                labelText: 'Spice Name',
-                prefixIcon: const Icon(Icons.spa_outlined, color: Color(0xFF2563EB)),
-                border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-                focusedBorder: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: const BorderSide(color: Color(0xFF2563EB), width: 2),
+            GestureDetector(
+              onTap: () async {
+                final selectedSpice = await showDialog<SpiceDefinition>(
+                  context: context,
+                  builder: (_) => BlocProvider.value(
+                    value: context.read<SpiceCubit>(),
+                    child: const SpiceSelectionDialog(),
+                  ),
+                );
+                if (selectedSpice != null) {
+                  _nameController.text = selectedSpice.name;
+                }
+              },
+              child: AbsorbPointer(
+                child: TextField(
+                  controller: _nameController,
+                  decoration: InputDecoration(
+                    labelText: 'Spice Name',
+                    prefixIcon: const Icon(Icons.spa_outlined, color: Color(0xFF2563EB)),
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    focusedBorder: OutlineInputBorder(
+                      borderRadius: BorderRadius.circular(12),
+                      borderSide: const BorderSide(color: Color(0xFF2563EB), width: 2),
+                    ),
+                  ),
                 ),
               ),
             ),

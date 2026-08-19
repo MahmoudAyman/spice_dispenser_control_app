@@ -135,7 +135,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // 3. Listen to machine alerts caught over STATUS characteristic notification streams
     try {
       final bluetoothCubit = context.read<BluetoothCubit>();
-      _alertSub = bluetoothCubit.bleService.protocolService.alertController.stream.listen((alert) {
+      _alertSub = bluetoothCubit.bleService.protocol.alertController.stream.listen((alert) {
         debugPrint('Dashboard Stream Alert: code ${alert.code} at slot ${alert.slot}');
 
         String spiceName = 'Slot ${alert.slot}';
@@ -258,7 +258,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   // Successfully ACKed! Start listening to physical status stream
                   debugPrint('Dispense command accepted! Listening to live progress stream...');
                   
-                  statusSubscription = bluetoothCubit.bleService.protocolService.statusController.stream.listen((status) {
+                  statusSubscription = bluetoothCubit.bleService.protocol.statusController.stream.listen((status) {
                     debugPrint('Dispense Live Progress: state=${status.state}, progress=${status.progress}');
                     
                     setDialogState(() {
@@ -285,7 +285,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                   });
 
                   // Listen to alert stream in case of mismatch/error
-                  alertSubscription = bluetoothCubit.bleService.protocolService.alertController.stream.listen((alert) {
+                  alertSubscription = bluetoothCubit.bleService.protocol.alertController.stream.listen((alert) {
                     debugPrint('Alert received during dispense: ${alert.code}, blocking=${alert.blocking}');
                     
                     if (!alert.blocking) {

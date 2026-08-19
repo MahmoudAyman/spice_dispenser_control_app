@@ -5,6 +5,8 @@ import '../../../../core/theme/app_colors.dart';
 import '../../../bluetooth/presentation/cubit/bluetooth_cubit.dart';
 import '../../../bluetooth/presentation/cubit/bluetooth_state.dart';
 import '../../../slots/presentation/screens/container_management_screen.dart';
+import '../../../container_management/presentation/screens/add_spice_screen.dart';
+import '../../../container_management/presentation/screens/spice_definitions_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -340,6 +342,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       builder: (_) => ContainerManagementScreen(
                         bleService: context.read<BluetoothCubit>().bleService,
                       ),
+                    ),
+                  );
+                },
+              ),
+              _buildSettingsTile(
+                icon: Icons.local_florist_outlined,
+                color: Colors.green,
+                title: 'Spice Definitions',
+                subtitle: 'Add or edit custom spice definitions',
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => const SpiceDefinitionsScreen(),
                     ),
                   );
                 },
