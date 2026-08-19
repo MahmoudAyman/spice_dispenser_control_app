@@ -55,26 +55,31 @@ class MainLayoutScreenState extends State<MainLayoutScreen> {
     }
   }
 
+  void _refreshManifestAndLevels() {
+    try {
+      final bluetoothCubit = context.read<BluetoothCubit>();
+      final isConnected = bluetoothCubit.state is BluetoothHandshakeSuccess;
+      if (isConnected && bluetoothCubit.bleService.writeCharacteristic != null) {
+        debugPrint('MainLayout: Tab switch refresh -> Pulling manifest and levels...');
+        bluetoothCubit.syncService.requestManifest().then((_) {
+          bluetoothCubit.syncService.requestSync();
+        }).catchError((e) {
+          debugPrint('MainLayout: Tab switch refresh error: $e');
+        });
+      }
+    } catch (e) {
+      debugPrint('MainLayout: Failed tab switch refresh: $e');
+    }
+  }
+
   void setTab(int index) {
     setState(() {
       _currentIndex = index;
     });
     if (index == 0) {
-      try {
-        final bluetoothCubit = context.read<BluetoothCubit>();
-        final isConnected = bluetoothCubit.state is BluetoothHandshakeSuccess;
-        if (isConnected && bluetoothCubit.bleService.writeCharacteristic != null) {
-          debugPrint('MainLayout: Tab switch refresh -> Pulling manifest and levels...');
-          bluetoothCubit.syncService.requestManifest().then((_) {
-            bluetoothCubit.syncService.requestSync();
-          }).catchError((e) {
-            debugPrint('MainLayout: Tab switch refresh error: $e');
-          });
-        }
-      } catch (e) {
-        debugPrint('MainLayout: Failed tab switch refresh: $e');
-      }
+      _refreshManifestAndLevels();
     } else if (index == 1) {
+      _refreshManifestAndLevels();
       debugPrint('MainLayout: Navigated to Recipes -> Triggering recipe list refresh on machine...');
       _syncRecipesToMachine();
     }
