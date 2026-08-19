@@ -46,6 +46,16 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
     (index) => TextEditingController(),
   );
 
+  final List<DateTime?> _selectedExpiryDates = List.generate(
+    totalSlots,
+    (index) => null,
+  );
+
+  final List<int> fillLevels = List.generate(
+    totalSlots,
+    (index) => 100,
+  );
+
   @override
   void initState() {
     super.initState();
@@ -153,7 +163,7 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
       context: context,
       firstDate: DateTime.now(),
       lastDate: DateTime(2035),
-      initialDate: DateTime.now(),
+      initialDate: _selectedExpiryDates[index] ?? DateTime.now(),
       builder: (context, child) {
         return Theme(
           data: Theme.of(context).copyWith(
@@ -169,6 +179,7 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
     );
 
     if (date != null) {
+      _selectedExpiryDates[index] = date;
       expiryControllers[index].text = '${date.day}/${date.month}/${date.year}';
       setState(() {});
     }
@@ -192,12 +203,14 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
     if (isConnected) {
       try {
         final registerName = isSkipping ? 'Slot ${_currentSlotIndex + 1}' : spiceName;
-        debugPrint('ONBOARDING SYNC -> Sending setup_slot_name: $registerName');
+        final level = isSkipping ? 0 : fillLevels[_currentSlotIndex];
+        debugPrint('ONBOARDING SYNC -> Sending setup_slot_name: $registerName with level $level%');
 
         final AckResponse ack = await bluetoothCubit.bleService.sendCommand(
           command: {
             'type': 'setup_slot_name',
             'name': registerName,
+            'level': level,
           },
           timeout: const Duration(seconds: 5),
         );
@@ -291,16 +304,23 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
       }
     } else {
       // Simulation/Offline fallback when machine is disconnected
-      debugPrint('ONBOARDING SYNC SIMULATION -> Slot ${_currentSlotIndex + 1}: ${isSkipping ? 'Empty' : spiceName}');
+      final level = isSkipping ? 0 : fillLevels[_currentSlotIndex];
+      debugPrint('ONBOARDING SYNC SIMULATION -> Slot ${_currentSlotIndex + 1}: ${isSkipping ? 'Empty' : spiceName} at $level%');
       await Future.delayed(const Duration(milliseconds: 1000));
     }
 
     // 2. Client Database Phase
+    final epochSecs = isSkipping
+        ? null
+        : (_selectedExpiryDates[_currentSlotIndex] != null
+            ? (_selectedExpiryDates[_currentSlotIndex]!.millisecondsSinceEpoch ~/ 1000)
+            : null);
+
     final slotModel = SlotModel(
       slotNumber: _currentSlotIndex + 1,
       spiceName: isSkipping ? 'Slot ${_currentSlotIndex + 1}' : spiceName,
-      expiryEpoch: null,
-      level: isSkipping ? 0 : 100, // Skipped slots have level 0%, configured slots 100%
+      expiryEpoch: epochSecs,
+      level: isSkipping ? 0 : fillLevels[_currentSlotIndex],
     );
 
     // Save individual slot map into local Hive storage prefixed by MAC address
@@ -334,11 +354,17 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
       final expiryDate = expiryControllers[index].text.trim();
       final isEmpty = spiceName.isEmpty && expiryDate.isEmpty;
 
+      final epochSecs = isEmpty
+          ? null
+          : (_selectedExpiryDates[index] != null
+              ? (_selectedExpiryDates[index]!.millisecondsSinceEpoch ~/ 1000)
+              : null);
+
       return SlotModel(
         slotNumber: index + 1,
         spiceName: isEmpty ? 'Slot ${index + 1}' : spiceName,
-        expiryEpoch: null,
-        level: isEmpty ? 0 : 100,
+        expiryEpoch: epochSecs,
+        level: isEmpty ? 0 : fillLevels[index],
       );
     });
 
@@ -459,12 +485,12 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
             ? _buildHomingWidget()
             : Column(
                 children: [
-                  const SizedBox(height: 20),
+                  const SizedBox(height: 10),
                   // Global Stepper Step Indicator
                   const SetupStepIndicator(
                     currentStep: 2,
                   ),
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 12),
 
                   // Card progress label and bar
                   Padding(
@@ -477,7 +503,7 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
                             Text(
                               'Spice Container ${_currentSlotIndex + 1} of $totalSlots',
                               style: const TextStyle(
-                                fontSize: 16,
+                                fontSize: 15,
                                 fontWeight: FontWeight.bold,
                                 color: AppColors.black,
                               ),
@@ -485,19 +511,19 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
                             Text(
                               '${((_currentSlotIndex + 1) / totalSlots * 100).toInt()}%',
                               style: const TextStyle(
-                                fontSize: 14,
+                                fontSize: 13,
                                 fontWeight: FontWeight.bold,
                                 color: AppColors.primary,
                               ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 8),
+                        const SizedBox(height: 6),
                         ClipRRect(
                           borderRadius: BorderRadius.circular(10),
                           child: LinearProgressIndicator(
                             value: progress,
-                            minHeight: 8,
+                            minHeight: 6,
                             backgroundColor: Colors.grey[200],
                             valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
                           ),
@@ -505,7 +531,7 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
                       ],
                     ),
                   ),
-                  const SizedBox(height: 16),
+                  const SizedBox(height: 10),
 
                   // Horizontal Slide PageView representing individual cards
                   Expanded(
@@ -547,18 +573,18 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
             : (isFormEdited ? 'Save & Sync Slot' : 'Skip Slot'));
 
     return SingleChildScrollView(
-      padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         decoration: BoxDecoration(
           color: Colors.white,
-          borderRadius: BorderRadius.circular(32),
+          borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.04),
-              blurRadius: 14,
-              offset: const Offset(0, 6),
+              blurRadius: 10,
+              offset: const Offset(0, 4),
             ),
           ],
         ),
@@ -568,34 +594,34 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
             Row(
               children: [
                 CircleAvatar(
-                  radius: 28,
+                  radius: 20,
                   backgroundColor: AppColors.primary.withOpacity(0.1),
                   child: Text(
                     '${index + 1}',
                     style: const TextStyle(
-                      fontSize: 20,
+                      fontSize: 16,
                       fontWeight: FontWeight.bold,
                       color: AppColors.primary,
                     ),
                   ),
                 ),
-                const SizedBox(width: 16),
+                const SizedBox(width: 12),
                 const Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
                       'Spice Container',
                       style: TextStyle(
-                        fontSize: 20,
+                        fontSize: 16,
                         fontWeight: FontWeight.bold,
                         color: AppColors.black,
                       ),
                     ),
-                    SizedBox(height: 2),
+                    SizedBox(height: 1),
                     Text(
                       'Configure spice name and expiry',
                       style: TextStyle(
-                        fontSize: 12,
+                        fontSize: 11,
                         color: AppColors.grey,
                       ),
                     ),
@@ -603,18 +629,18 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
                 ),
               ],
             ),
-            const SizedBox(height: 28),
+            const SizedBox(height: 12),
 
             // Spice Name Field
             const Text(
               'Select a Spice',
               style: TextStyle(
-                fontSize: 14,
+                fontSize: 12,
                 fontWeight: FontWeight.bold,
                 color: AppColors.black,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             GestureDetector(
               onTap: () async {
                 final selectedSpice = await showDialog<SpiceDefinition>(
@@ -637,28 +663,28 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
                     hintText: 'e.g., Smoked Paprika',
                     filled: true,
                     fillColor: const Color(0xFFF8FAFC),
-                    contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                    contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                     border: OutlineInputBorder(
-                      borderRadius: BorderRadius.circular(16),
+                      borderRadius: BorderRadius.circular(10),
                       borderSide: BorderSide.none,
                     ),
-                    prefixIcon: const Icon(Icons.restaurant_menu, size: 20),
+                    prefixIcon: const Icon(Icons.restaurant_menu, size: 18),
                   ),
                 ),
               ),
             ),
-            const SizedBox(height: 20),
+            const SizedBox(height: 8),
 
             // Expiry Date Field
             const Text(
               'Expiry Date',
               style: TextStyle(
-                fontSize: 14,
+                fontSize: 12,
                 fontWeight: FontWeight.bold,
                 color: AppColors.black,
               ),
             ),
-            const SizedBox(height: 8),
+            const SizedBox(height: 4),
             TextField(
               controller: expiryController,
               readOnly: true,
@@ -667,34 +693,47 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
                 hintText: 'Select Date',
                 filled: true,
                 fillColor: const Color(0xFFF8FAFC),
-                contentPadding: const EdgeInsets.symmetric(horizontal: 18, vertical: 16),
+                contentPadding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
                 border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(16),
+                  borderRadius: BorderRadius.circular(10),
                   borderSide: BorderSide.none,
                 ),
-                prefixIcon: const Icon(Icons.calendar_month, size: 20),
-                suffixIcon: const Icon(Icons.arrow_drop_down),
+                prefixIcon: const Icon(Icons.calendar_month, size: 18),
+                suffixIcon: const Icon(Icons.arrow_drop_down, size: 18),
               ),
             ),
+            const SizedBox(height: 8),
+
+            // Initial Fill Level Field
+            const Text(
+              'Initial Fill Level',
+              style: TextStyle(
+                fontSize: 12,
+                fontWeight: FontWeight.bold,
+                color: AppColors.black,
+              ),
+            ),
+            const SizedBox(height: 4),
+            _buildFillLevelSelector(index),
             
             // Helpful Inline Warning
             if (isFormEdited && !isFormComplete) ...[
-              const SizedBox(height: 16),
+              const SizedBox(height: 8),
               Row(
                 children: [
-                  Icon(Icons.info_outline, color: Colors.amber[700], size: 16),
-                  const SizedBox(width: 8),
+                  Icon(Icons.info_outline, color: Colors.amber[700], size: 14),
+                  const SizedBox(width: 6),
                   Expanded(
                     child: Text(
                       'Please complete both fields or clear them to skip.',
-                      style: TextStyle(fontSize: 12, color: Colors.amber[900], fontWeight: FontWeight.w500),
+                      style: TextStyle(fontSize: 11, color: Colors.amber[900], fontWeight: FontWeight.w500),
                     ),
                   ),
                 ],
               ),
             ],
 
-            const SizedBox(height: 36),
+            const SizedBox(height: 14),
 
             // Wizard Action Buttons
             Row(
@@ -702,34 +741,34 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
                 // Previous Button
                 if (index > 0) ...[
                   SizedBox(
-                    height: 56,
-                    width: 64,
+                    height: 44,
+                    width: 52,
                     child: OutlinedButton(
                       onPressed: _isSyncing ? null : _handlePrevious,
                       style: OutlinedButton.styleFrom(
                         padding: EdgeInsets.zero,
-                        side: BorderSide(color: Colors.grey[300]!, width: 1.5),
+                        side: BorderSide(color: Colors.grey[300]!, width: 1.2),
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(10),
                         ),
                       ),
-                      child: const Icon(Icons.arrow_back, color: AppColors.primary),
+                      child: const Icon(Icons.arrow_back, color: AppColors.primary, size: 20),
                     ),
                   ),
-                  const SizedBox(width: 12),
+                  const SizedBox(width: 10),
                 ],
 
                 // Action Button (Save & Sync / Skip Slot)
                 Expanded(
                   child: SizedBox(
-                    height: 56,
+                    height: 44,
                     child: ElevatedButton(
                       style: ElevatedButton.styleFrom(
                         backgroundColor: canContinue 
                             ? (isFormEdited ? const Color(0xFF2563EB) : Colors.grey[700]) 
                             : Colors.grey[300],
                         shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(16),
+                          borderRadius: BorderRadius.circular(10),
                         ),
                         elevation: 0,
                       ),
@@ -739,17 +778,17 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
                               mainAxisAlignment: MainAxisAlignment.center,
                               children: [
                                 const SizedBox(
-                                  width: 20,
-                                  height: 20,
+                                  width: 16,
+                                  height: 16,
                                   child: CircularProgressIndicator(
-                                    strokeWidth: 2.5,
+                                    strokeWidth: 2.0,
                                     valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
                                   ),
                                 ),
-                                const SizedBox(width: 12),
+                                const SizedBox(width: 10),
                                 Text(
-                                  isLast ? 'Finalizing Setup...' : 'Registering Slot...',
-                                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                                  isLast ? 'Finalizing...' : 'Registering...',
+                                  style: const TextStyle(color: Colors.white, fontSize: 14, fontWeight: FontWeight.bold),
                                 ),
                               ],
                             )
@@ -757,7 +796,7 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
                               buttonText,
                               style: TextStyle(
                                 color: canContinue ? Colors.white : Colors.grey[500],
-                                fontSize: 16,
+                                fontSize: 14,
                                 fontWeight: FontWeight.bold,
                               ),
                             ),
@@ -768,6 +807,80 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
             ),
           ],
         ),
+      ),
+    );
+  }
+
+  Widget _buildFillLevelSelector(int index) {
+    const levels = [25, 50, 75, 100];
+    const levelLabels = ['Quarter', 'Half', '¾ Full', 'Full'];
+    const levelIcons = [
+      Icons.battery_1_bar,
+      Icons.battery_3_bar,
+      Icons.battery_5_bar,
+      Icons.battery_full,
+    ];
+
+    final currentLevel = fillLevels[index];
+
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF0F4FF),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: const Color(0xFF2563EB).withOpacity(0.2)),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: List.generate(levels.length, (i) {
+              final selected = currentLevel == levels[i];
+              return Expanded(
+                child: GestureDetector(
+                  onTap: () => setState(() => fillLevels[index] = levels[i]),
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 180),
+                    margin: EdgeInsets.only(right: i < levels.length - 1 ? 4 : 0),
+                    padding: const EdgeInsets.symmetric(vertical: 6),
+                    decoration: BoxDecoration(
+                      color: selected ? const Color(0xFF2563EB) : Colors.white,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(
+                        color: selected ? const Color(0xFF2563EB) : Colors.grey.shade300,
+                        width: selected ? 1.5 : 1,
+                      ),
+                      boxShadow: selected
+                          ? [BoxShadow(color: const Color(0xFF2563EB).withOpacity(0.2), blurRadius: 4)]
+                          : [],
+                    ),
+                    child: Column(
+                      children: [
+                        Icon(levelIcons[i], color: selected ? Colors.white : Colors.grey.shade600, size: 16),
+                        const SizedBox(height: 2),
+                        Text(
+                          '${levels[i]}%',
+                          style: TextStyle(
+                            color: selected ? Colors.white : Colors.black87,
+                            fontWeight: FontWeight.bold,
+                            fontSize: 11,
+                          ),
+                        ),
+                        Text(
+                          levelLabels[i],
+                          style: TextStyle(
+                            color: selected ? Colors.white70 : Colors.grey.shade500,
+                            fontSize: 8,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              );
+            }),
+          ),
+        ],
       ),
     );
   }

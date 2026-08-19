@@ -168,6 +168,26 @@ class StorageService {
     ) as double;
   }
 
+  /// LOW LEVEL THRESHOLD SETTING
+
+  static Future<void> setLowLevelThreshold(
+      int percent,
+      ) async {
+
+    await userBox.put(
+      StorageKeys.lowLevelThreshold,
+      percent,
+    );
+  }
+
+  static int getLowLevelThreshold() {
+
+    return userBox.get(
+      StorageKeys.lowLevelThreshold,
+      defaultValue: 20,
+    ) as int;
+  }
+
   /// MACHINE INITIALIZED
 
   static Future<void>

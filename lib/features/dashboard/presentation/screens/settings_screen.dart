@@ -118,6 +118,134 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  void _showLowLevelThresholdDialog(BuildContext context) {
+    final currentThreshold = StorageService.getLowLevelThreshold();
+    final controller = TextEditingController(text: currentThreshold.toString());
+
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: const Row(
+            children: [
+              Icon(Icons.warning_amber_rounded, color: Colors.amber, size: 28),
+              SizedBox(width: 12),
+              Text(
+                'Low Level Threshold',
+                style: TextStyle(fontWeight: FontWeight.bold),
+              ),
+            ],
+          ),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              const Text(
+                'Set the percentage at which a physical spice container is flagged as running low (e.g., 20%).',
+                style: TextStyle(fontSize: 14, color: AppColors.grey),
+              ),
+              const SizedBox(height: 20),
+              TextField(
+                controller: controller,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Low Threshold (%)',
+                  suffixText: '%',
+                  border: OutlineInputBorder(),
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel', style: TextStyle(color: Colors.grey, fontWeight: FontWeight.bold)),
+            ),
+            TextButton(
+              onPressed: () async {
+                final input = controller.text.trim();
+                final value = int.tryParse(input);
+                if (value == null || value < 5 || value > 95) {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('Please enter a value between 5 and 95'), backgroundColor: Colors.redAccent),
+                  );
+                  return;
+                }
+                
+                Navigator.pop(context); // Close dialog
+                await _updateLowLevelThreshold(value);
+              },
+              child: const Text('Save', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Future<void> _updateLowLevelThreshold(int value) async {
+    // Show Loading dialog
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        content: const Row(
+          children: [
+            CircularProgressIndicator(
+              valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+            ),
+            SizedBox(width: 24),
+            Expanded(
+              child: Text(
+                'Updating threshold on machine...',
+                style: TextStyle(fontWeight: FontWeight.w500),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    final bleCubit = context.read<BluetoothCubit>();
+    final isConnected = bleCubit.state is BluetoothHandshakeSuccess;
+
+    if (isConnected) {
+      try {
+        debugPrint('SETTINGS -> Sending set_low_level_threshold command: ${value.toDouble()}%');
+        final ack = await bleCubit.bleService.sendCommand(
+          command: {
+            'type': 'set_low_level_threshold',
+            'low_level_threshold': value.toDouble(),
+          },
+        );
+        debugPrint('set_low_level_threshold ACK: ${ack.status}');
+      } catch (e) {
+        debugPrint('Failed to send set_low_level_threshold over BLE: $e');
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Failed to update machine. Setting locally: $e'), backgroundColor: Colors.amber[800]),
+          );
+        }
+      }
+    }
+
+    // Save locally
+    await StorageService.setLowLevelThreshold(value);
+
+    if (mounted) {
+      Navigator.pop(context); // Close loading dialog
+      setState(() {}); // Rebuild to update visual label
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('Low level threshold updated to $value% successfully!'),
+          backgroundColor: AppColors.green,
+        ),
+      );
+    }
+  }
+
   void _showMaxFillDialog(BuildContext context) {
     final currentMaxFill = StorageService.getMaxFillGrams();
     final controller = TextEditingController(text: currentMaxFill.toStringAsFixed(0));
@@ -379,6 +507,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 title: 'Max Container Capacity',
                 subtitle: 'Current: ${StorageService.getMaxFillGrams().toStringAsFixed(0)}g',
                 onTap: () => _showMaxFillDialog(context),
+              ),
+              _buildSettingsTile(
+                icon: Icons.warning_amber_rounded,
+                color: Colors.amber,
+                title: 'Low Spice Level Threshold',
+                subtitle: 'Current: ${StorageService.getLowLevelThreshold()}%',
+                onTap: () => _showLowLevelThresholdDialog(context),
               ),
               _buildSettingsTile(
                 icon: Icons.bluetooth,

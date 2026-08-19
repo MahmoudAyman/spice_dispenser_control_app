@@ -39,6 +39,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   final List<String> _activeAlerts = []; // Captured live from machine over BLE STATUS
   final Set<String> _dismissedNotifications = {};
   bool _isDispensing = false;
+  bool _notificationsExpanded = false;
 
   @override
   void initState() {
@@ -69,16 +70,22 @@ class _DashboardScreenState extends State<DashboardScreen> {
     // 1. Add active live machine alerts first (e.g. low_spice alarms caught via notify)
     _notifications.addAll(_activeAlerts);
 
-    // 2. Identify physical slots running low locally (fill level <= 20%)
+    final lowLevelThreshold = StorageService.getLowLevelThreshold();
+
+    // 2. Identify physical slots running low locally (fill level <= lowLevelThreshold%)
     for (var slot in slots) {
-      if (slot.level <= 20 && slot.spiceName.trim().isNotEmpty) {
+      final name = slot.spiceName.trim();
+      final isSkipped = name.isEmpty || name.startsWith('Slot ');
+      if (!isSkipped && slot.level <= lowLevelThreshold) {
         _notifications.add('Low Level: "${slot.spiceName}" in Slot ${slot.slotNumber} is running low (${slot.level}%).');
       }
     }
 
     // 3. Calendar arithmetic check for expired/expiring ingredients
     for (var slot in slots) {
-      if (slot.spiceName.trim().isNotEmpty) {
+      final name = slot.spiceName.trim();
+      final isSkipped = name.isEmpty || name.startsWith('Slot ');
+      if (!isSkipped) {
         if (slot.isExpired) {
           _notifications.add('Expired Spice: "${slot.spiceName}" in Slot ${slot.slotNumber} has expired on ${slot.expiryDisplayString}!');
         } else if (slot.isExpiringSoon) {
@@ -534,37 +541,53 @@ class _DashboardScreenState extends State<DashboardScreen> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Row(
-          children: [
-            const Icon(Icons.notifications_active_outlined, color: Color(0xFF0F172A), size: 22),
-            const SizedBox(width: 8),
-            const Text(
-              'Alerts & Notifications',
-              style: TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: Color(0xFF0F172A),
-              ),
-            ),
-            if (activeNotifications.isNotEmpty) ...[
-              const SizedBox(width: 10),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                decoration: BoxDecoration(
-                  color: const Color(0xFFEF4444),
-                  borderRadius: BorderRadius.circular(12),
+        GestureDetector(
+          onTap: activeNotifications.isEmpty
+              ? null
+              : () {
+                  setState(() {
+                    _notificationsExpanded = !_notificationsExpanded;
+                  });
+                },
+          behavior: HitTestBehavior.opaque,
+          child: Row(
+            children: [
+              const Icon(Icons.notifications_active_outlined, color: Color(0xFF0F172A), size: 22),
+              const SizedBox(width: 8),
+              const Text(
+                'Alerts & Notifications',
+                style: TextStyle(
+                  fontSize: 20,
+                  fontWeight: FontWeight.bold,
+                  color: Color(0xFF0F172A),
                 ),
-                child: Text(
-                  '${activeNotifications.length}',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 12,
-                    fontWeight: FontWeight.bold,
+              ),
+              if (activeNotifications.isNotEmpty) ...[
+                const SizedBox(width: 10),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: const Color(0xFFEF4444),
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    '${activeNotifications.length}',
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                    ),
                   ),
                 ),
-              ),
+                const Spacer(),
+                Icon(
+                  _notificationsExpanded ? Icons.expand_less : Icons.expand_more,
+                  color: const Color(0xFF64748B),
+                  size: 24,
+                ),
+              ],
             ],
-          ],
+          ),
         ),
         const SizedBox(height: 12),
         if (activeNotifications.isEmpty)
@@ -593,7 +616,36 @@ class _DashboardScreenState extends State<DashboardScreen> {
               ],
             ),
           )
-        else
+        else if (_notificationsExpanded) ...[
+          Row(
+            mainAxisAlignment: MainAxisAlignment.end,
+            children: [
+              TextButton.icon(
+                onPressed: () {
+                  setState(() {
+                    _dismissedNotifications.addAll(activeNotifications);
+                    _activeAlerts.clear();
+                    _loadNotifications();
+                  });
+                },
+                style: TextButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  minimumSize: Size.zero,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                icon: const Icon(Icons.delete_sweep_outlined, color: Color(0xFFEF4444), size: 18),
+                label: const Text(
+                  'Clear All',
+                  style: TextStyle(
+                    color: Color(0xFFEF4444),
+                    fontSize: 13,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 4),
           ListView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
@@ -610,57 +662,49 @@ class _DashboardScreenState extends State<DashboardScreen> {
 
               return Container(
                 margin: const EdgeInsets.only(bottom: 10),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
                 decoration: BoxDecoration(
                   color: bgColor,
                   borderRadius: BorderRadius.circular(16),
+                  border: Border.all(
+                    color: barColor.withOpacity(0.25),
+                    width: 1.5,
+                  ),
                 ),
-                clipBehavior: Clip.antiAlias,
-                child: IntrinsicHeight(
-                  child: Row(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      Container(width: 5, color: barColor),
-                      Expanded(
-                        child: Padding(
-                          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-                          child: Row(
-                            children: [
-                              Icon(icon, color: barColor, size: 24),
-                              const SizedBox(width: 12),
-                              Expanded(
-                                child: Text(
-                                  text,
-                                  style: TextStyle(
-                                    fontSize: 14,
-                                    fontWeight: FontWeight.bold,
-                                    color: textColor,
-                                    height: 1.35,
-                                  ),
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              IconButton(
-                                icon: Icon(Icons.close_rounded, color: barColor.withOpacity(0.8), size: 20),
-                                padding: EdgeInsets.zero,
-                                constraints: const BoxConstraints(),
-                                onPressed: () {
-                                  setState(() {
-                                    _dismissedNotifications.add(text);
-                                    _activeAlerts.remove(text);
-                                    _loadNotifications();
-                                  });
-                                },
-                              ),
-                            ],
-                          ),
+                child: Row(
+                  children: [
+                    Icon(icon, color: barColor, size: 24),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        text,
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: textColor,
+                          height: 1.35,
                         ),
                       ),
-                    ],
-                  ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton(
+                      icon: Icon(Icons.close_rounded, color: barColor.withOpacity(0.8), size: 20),
+                      padding: EdgeInsets.zero,
+                      constraints: const BoxConstraints(),
+                      onPressed: () {
+                        setState(() {
+                          _dismissedNotifications.add(text);
+                          _activeAlerts.remove(text);
+                          _loadNotifications();
+                        });
+                      },
+                    ),
+                  ],
                 ),
               );
             },
           ),
+        ]
       ],
     );
   }
@@ -934,7 +978,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
         itemBuilder: (context, index) {
           final slot = displayedSlots[index];
-          final isLow = slot.level <= 20;
+          final isLow = slot.level <= StorageService.getLowLevelThreshold();
 
           return Container(
             width: 170,

@@ -20,6 +20,9 @@ class StorageKeys {
   static const String maxFillGrams =
       'max_fill_grams';
 
+  static const String lowLevelThreshold =
+      'low_level_threshold';
+
   /// Recipes
 
   static const String recipesBox =
