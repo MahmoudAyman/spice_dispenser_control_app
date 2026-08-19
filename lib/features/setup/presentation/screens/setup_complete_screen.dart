@@ -93,20 +93,16 @@ class _SetupCompleteScreenState
 
       body: SafeArea(
         child: SingleChildScrollView(
-          padding:
-          const EdgeInsets.all(24),
-
+          padding: const EdgeInsets.all(16),
           child: ConstrainedBox(
             constraints: BoxConstraints(
-              minHeight:
-              screenHeight - 140,
+              minHeight: screenHeight - 120,
             ),
-
             child: IntrinsicHeight(
               child: Column(
                 children: [
                   const SizedBox(
-                    height: 20,
+                    height: 8,
                   ),
 
                   const SetupStepIndicator(
@@ -114,96 +110,39 @@ class _SetupCompleteScreenState
                   ),
 
                   const SizedBox(
-                    height: 40,
+                    height: 16,
                   ),
 
                   Expanded(
                     child: Container(
-                      width:
-                      double.infinity,
-
-                      padding:
-                      const EdgeInsets.all(
-                        28,
-                      ),
-
-                      decoration:
-                      BoxDecoration(
-                        color:
-                        Colors.white,
-
-                        borderRadius:
-                        BorderRadius.circular(
-                          32,
-                        ),
-
+                      width: double.infinity,
+                      padding: const EdgeInsets.all(20),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(24),
                         boxShadow: [
                           BoxShadow(
-                            color: Colors
-                                .black
-                                .withOpacity(
-                              0.05,
-                            ),
-
-                            blurRadius: 12,
-                            offset:
-                            const Offset(
-                              0,
-                              4,
-                            ),
+                            color: Colors.black.withOpacity(0.04),
+                            blurRadius: 10,
+                            offset: const Offset(0, 2),
                           ),
                         ],
                       ),
 
                       child: Column(
-                        mainAxisAlignment:
-                        MainAxisAlignment
-                            .center,
-
+                        mainAxisAlignment: MainAxisAlignment.center,
                         children: [
                           Container(
-                            width: 150,
-                            height: 150,
-
-                            decoration:
-                            const BoxDecoration(
-                              color: Color(
-                                0xFFE9FFF0,
-                              ),
-
-                              shape:
-                              BoxShape
-                                  .circle,
+                            width: 100,
+                            height: 100,
+                            decoration: const BoxDecoration(
+                              color: Color(0xFFE9FFF0),
+                              shape: BoxShape.circle,
                             ),
-
-                            child:
-                            const Icon(
+                            child: const Icon(
                               Icons.check,
-                              size: 90,
-                              color:
-                              Colors
-                                  .green,
-                            ),
-                          ),
-
-                          const SizedBox(
-                            height: 32,
-                          ),
-
-                          const Text(
-                            'Setup Complete!',
-                            textAlign:
-                            TextAlign
-                                .center,
-
-                            style:
-                            TextStyle(
-                              fontSize:
-                              30,
-
-                              fontWeight:
-                              FontWeight
-                                  .bold,
+                              size: 60,
+                              color: Colors.green,
                             ),
                           ),
 
@@ -212,75 +151,58 @@ class _SetupCompleteScreenState
                           ),
 
                           const Text(
-                            'Your smart spice dispenser is ready to use.\nAll settings have been saved successfully.',
-
-                            textAlign:
-                            TextAlign
-                                .center,
-
-                            style:
-                            TextStyle(
-                              color:
-                              Colors
-                                  .grey,
-
-                              fontSize:
-                              16,
-
-                              height:
-                              1.5,
+                            'Setup Complete!',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              fontSize: 24,
+                              fontWeight: FontWeight.bold,
                             ),
                           ),
 
                           const SizedBox(
-                            height: 28,
+                            height: 8,
+                          ),
+
+                          const Text(
+                            'Your smart spice dispenser is ready to use.\nAll settings have been saved successfully.',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
+                              color: Colors.grey,
+                              fontSize: 14,
+                              height: 1.4,
+                            ),
+                          ),
+
+                          const SizedBox(
+                            height: 16,
                           ),
 
                           Container(
-                            padding:
-                            const EdgeInsets.symmetric(
-                              horizontal:
-                              16,
-                              vertical: 14,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 12,
                             ),
-
-                            decoration:
-                            BoxDecoration(
-                              color:
-                              const Color(
-                                0xFFF3F7FF,
-                              ),
-
-                              borderRadius:
-                              BorderRadius.circular(
-                                18,
-                              ),
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF3F7FF),
+                              borderRadius: BorderRadius.circular(16),
                             ),
-
                             child: Row(
                               children: const [
                                 Icon(
-                                  Icons
-                                      .storage_rounded,
-                                  color:
-                                  Color(
-                                    0xFF2563EB,
-                                  ),
+                                  Icons.storage_rounded,
+                                  color: Color(0xFF2563EB),
                                 ),
 
                                 SizedBox(
-                                  width:
-                                  12,
+                                  width: 12,
                                 ),
 
                                 Expanded(
-                                  child:
-                                  Text(
+                                  child: Text(
                                     'Local database initialized successfully.',
-                                    style:
-                                    TextStyle(
-                                      fontWeight:
-                                      FontWeight.w600,
+                                    style: TextStyle(
+                                      fontWeight: FontWeight.w600,
+                                      fontSize: 13,
                                     ),
                                   ),
                                 ),

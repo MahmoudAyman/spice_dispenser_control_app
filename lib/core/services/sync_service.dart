@@ -68,7 +68,9 @@ class SyncService {
       final val = StorageService.slotsBox.get(key);
       if (val != null) {
         final slot = Map<String, dynamic>.from(val);
-        slot['level'] = entry.value;
+        final spiceName = slot['spiceName'] ?? '';
+        final isSkipped = spiceName.toString().trim().startsWith('Slot ');
+        slot['level'] = isSkipped ? 0 : entry.value;
 
         await StorageService.slotsBox.put(
           key,
@@ -91,12 +93,13 @@ class SyncService {
     } else if (item.type == 'manifest_item' && item.slot != null) {
       final expirySeconds = item.expiry;
       final epochVal = (expirySeconds != null && expirySeconds > 0) ? expirySeconds : null;
+      final isSkipped = item.name != null && item.name!.trim().startsWith('Slot ');
 
       final slotModel = SlotModel(
         slotNumber: item.slot!,
         spiceName: item.name ?? '',
         expiryEpoch: epochVal,
-        level: item.level ?? 0,
+        level: isSkipped ? 0 : (item.level ?? 0),
       );
 
       // Save synced slot individually in the Hive cache prefixed by MAC

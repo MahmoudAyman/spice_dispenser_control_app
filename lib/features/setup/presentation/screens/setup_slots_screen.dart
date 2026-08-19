@@ -27,6 +27,10 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
   final PageController _pageController = PageController();
   int _currentSlotIndex = 0;
   bool _isSyncing = false;
+  bool _isHoming = false;
+  String _homingStatus = 'Initializing...';
+  StreamSubscription? _statusSubscription;
+  StreamSubscription? _setupReadySubscription;
 
   final List<TextEditingController> spiceControllers = List.generate(
     totalSlots,
@@ -39,7 +43,80 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
   );
 
   @override
+  void initState() {
+    super.initState();
+    _checkHomingStatus();
+  }
+
+  void _checkHomingStatus() {
+    final bluetoothCubit = context.read<BluetoothCubit>();
+    final isConnected = bluetoothCubit.state is BluetoothHandshakeSuccess;
+
+    if (!isConnected) {
+      _isHoming = false;
+      return;
+    }
+
+    // Default to true and await confirmations
+    _isHoming = true;
+    _homingStatus = 'Finding home...';
+
+    _statusSubscription = bluetoothCubit.bleService.protocolService.statusController.stream.listen((status) {
+      debugPrint('HOMING CHECK -> Received status update: state=${status.state}, detail=${status.detail}, msg=${status.statusMsg}');
+      
+      if (status.state.toLowerCase() == 'setup') {
+        final detail = status.detail ?? '';
+        final isHomingDetail = detail.contains('Finding home') || detail.contains('Initializing configuration');
+
+        if (isHomingDetail) {
+          setState(() {
+            _isHoming = true;
+            _homingStatus = status.detail ?? 'Finding home...';
+          });
+        } else {
+          setState(() {
+            _isHoming = false;
+          });
+          _cancelHomingSubscriptions();
+        }
+      } else {
+        setState(() {
+          _isHoming = false;
+        });
+        _cancelHomingSubscriptions();
+      }
+    });
+
+    _setupReadySubscription = bluetoothCubit.bleService.protocolService.setupReadyController.stream.listen((ready) {
+      debugPrint('HOMING CHECK -> Received setup ready for slot: ${ready.slot}');
+      if (ready.slot >= 1) {
+        setState(() {
+          _isHoming = false;
+        });
+        _cancelHomingSubscriptions();
+      }
+    });
+
+    // Request initial status from machine
+    try {
+      bluetoothCubit.bleService.writeCommand(
+        command: {'type': 'get_status'},
+      );
+    } catch (e) {
+      debugPrint('HOMING CHECK -> Failed to send get_status: $e');
+    }
+  }
+
+  void _cancelHomingSubscriptions() {
+    _statusSubscription?.cancel();
+    _statusSubscription = null;
+    _setupReadySubscription?.cancel();
+    _setupReadySubscription = null;
+  }
+
+  @override
   void dispose() {
+    _cancelHomingSubscriptions();
     _pageController.dispose();
     for (var controller in spiceControllers) {
       controller.dispose();
@@ -200,7 +277,7 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
     // 2. Client Database Phase
     final slotModel = SlotModel(
       slotNumber: _currentSlotIndex + 1,
-      spiceName: isSkipping ? '' : spiceName,
+      spiceName: isSkipping ? 'Slot ${_currentSlotIndex + 1}' : spiceName,
       expiryEpoch: null,
       level: isSkipping ? 0 : 100, // Skipped slots have level 0%, configured slots 100%
     );
@@ -238,7 +315,7 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
 
       return SlotModel(
         slotNumber: index + 1,
-        spiceName: isEmpty ? '' : spiceName,
+        spiceName: isEmpty ? 'Slot ${index + 1}' : spiceName,
         expiryEpoch: null,
         level: isEmpty ? 0 : 100,
       );
@@ -264,6 +341,68 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
         curve: Curves.easeInOutCubic,
       );
     }
+  }
+
+  Widget _buildHomingWidget() {
+    return Center(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 24),
+        padding: const EdgeInsets.all(32),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(32),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.04),
+              blurRadius: 14,
+              offset: const Offset(0, 6),
+            ),
+          ],
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            const SizedBox(
+              width: 80,
+              height: 80,
+              child: CircularProgressIndicator(
+                strokeWidth: 6,
+                valueColor: AlwaysStoppedAnimation<Color>(AppColors.primary),
+              ),
+            ),
+            const SizedBox(height: 32),
+            const Text(
+              'Machine Homing',
+              style: TextStyle(
+                fontSize: 24,
+                fontWeight: FontWeight.bold,
+                color: AppColors.black,
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _homingStatus,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                fontSize: 16,
+                color: AppColors.grey,
+              ),
+            ),
+            const SizedBox(height: 16),
+            const Text(
+              'Please wait while the spice dispenser aligns to Slot 1...',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                fontSize: 12,
+                color: AppColors.grey,
+                fontStyle: FontStyle.italic,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
   }
 
   @override
@@ -295,74 +434,76 @@ class _SetupSlotsScreenState extends State<SetupSlotsScreen> {
         ),
       ),
       body: SafeArea(
-        child: Column(
-          children: [
-            const SizedBox(height: 20),
-            // Global Stepper Step Indicator
-            const SetupStepIndicator(
-              currentStep: 2,
-            ),
-            const SizedBox(height: 24),
-
-            // Card progress label and bar
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Column(
+        child: _isHoming 
+            ? _buildHomingWidget()
+            : Column(
                 children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      Text(
-                        'Spice Container ${_currentSlotIndex + 1} of $totalSlots',
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.black,
-                        ),
-                      ),
-                      Text(
-                        '${((_currentSlotIndex + 1) / totalSlots * 100).toInt()}%',
-                        style: const TextStyle(
-                          fontSize: 14,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ],
+                  const SizedBox(height: 20),
+                  // Global Stepper Step Indicator
+                  const SetupStepIndicator(
+                    currentStep: 2,
                   ),
-                  const SizedBox(height: 8),
-                  ClipRRect(
-                    borderRadius: BorderRadius.circular(10),
-                    child: LinearProgressIndicator(
-                      value: progress,
-                      minHeight: 8,
-                      backgroundColor: Colors.grey[200],
-                      valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
+                  const SizedBox(height: 24),
+
+                  // Card progress label and bar
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text(
+                              'Spice Container ${_currentSlotIndex + 1} of $totalSlots',
+                              style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.black,
+                              ),
+                            ),
+                            Text(
+                              '${((_currentSlotIndex + 1) / totalSlots * 100).toInt()}%',
+                              style: const TextStyle(
+                                fontSize: 14,
+                                fontWeight: FontWeight.bold,
+                                color: AppColors.primary,
+                              ),
+                            ),
+                          ],
+                        ),
+                        const SizedBox(height: 8),
+                        ClipRRect(
+                          borderRadius: BorderRadius.circular(10),
+                          child: LinearProgressIndicator(
+                            value: progress,
+                            minHeight: 8,
+                            backgroundColor: Colors.grey[200],
+                            valueColor: const AlwaysStoppedAnimation<Color>(AppColors.primary),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(height: 16),
+
+                  // Horizontal Slide PageView representing individual cards
+                  Expanded(
+                    child: PageView.builder(
+                      controller: _pageController,
+                      physics: const NeverScrollableScrollPhysics(), // Require buttons to navigate to validate syncing
+                      onPageChanged: (index) {
+                        setState(() {
+                          _currentSlotIndex = index;
+                        });
+                      },
+                      itemCount: totalSlots,
+                      itemBuilder: (context, index) {
+                        return _buildSlotConfigCard(index, screenHeight);
+                      },
                     ),
                   ),
                 ],
               ),
-            ),
-            const SizedBox(height: 16),
-
-            // Horizontal Slide PageView representing individual cards
-            Expanded(
-              child: PageView.builder(
-                controller: _pageController,
-                physics: const NeverScrollableScrollPhysics(), // Require buttons to navigate to validate syncing
-                onPageChanged: (index) {
-                  setState(() {
-                    _currentSlotIndex = index;
-                  });
-                },
-                itemCount: totalSlots,
-                itemBuilder: (context, index) {
-                  return _buildSlotConfigCard(index, screenHeight);
-                },
-              ),
-            ),
-          ],
-        ),
       ),
     ),
     );
