@@ -14,7 +14,7 @@ import '../protocol/responses/ack_response.dart';
 class BleService {
 
   final ProtocolService
-  protocolService =
+  protocol =
   ProtocolService();
 
   BluetoothCharacteristic?
@@ -218,7 +218,7 @@ class BleService {
         'STARTING STATUS LISTENER',
       );
 
-      await protocolService
+      await protocol
           .startStatusListening(
         statusCharacteristic!,
       );
@@ -233,7 +233,7 @@ class BleService {
         'STARTING SYNC LISTENER',
       );
 
-      await protocolService
+      await protocol
           .startSyncListening(
         syncCharacteristic!,
       );
@@ -273,7 +273,7 @@ class BleService {
       );
 
       final AckResponse ack =
-      await protocolService
+      await protocol
           .sendCommand(
         writeCharacteristic:
         writeCharacteristic!,
@@ -321,7 +321,7 @@ class BleService {
       );
     }
 
-    return await protocolService
+    return await protocol
         .sendCommand(
       writeCharacteristic:
       writeCharacteristic!,
@@ -348,7 +348,7 @@ class BleService {
       );
     }
 
-    await protocolService
+    await protocol
         .writeCommand(
       writeCharacteristic:
       writeCharacteristic!,
@@ -375,6 +375,6 @@ class BleService {
 
   void dispose() {
 
-    protocolService.dispose();
+    protocol.dispose();
   }
 }

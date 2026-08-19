@@ -19,6 +19,9 @@ class ProtocolConstants {
   static const String sync =
       'sync';
 
+  static const String getSpiceDefinitions = 'get_spice_definitions';
+  static const String addSpiceDefinition = 'add_spice_definition';
+
   /// RESPONSE TYPES
   static const String ack =
       'ack';
@@ -31,6 +34,10 @@ class ProtocolConstants {
 
   static const String alert =
       'alert';
+
+  static const String spiceDefinitionsStart = 'spice_definitions_start';
+  static const String spiceDefinitionItem = 'spice_definition_item';
+  static const String spiceDefinitionsEnd = 'spice_definitions_end';
 
   /// ACK STATUS
   static const String success =

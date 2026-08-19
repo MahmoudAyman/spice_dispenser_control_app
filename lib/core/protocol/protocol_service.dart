@@ -17,34 +17,33 @@ import 'responses/alert_response.dart';
 import 'responses/levels_response.dart';
 
 import 'responses/manifest_response.dart';
-
 import 'responses/setup_ready_for_slot_response.dart';
+import 'responses/spice_definition_response.dart';
 
 class ProtocolService {
-
   /// SETUP READY STREAM
 
-  final StreamController<SetupReadyForSlotResponse>
-  setupReadyController =
-  StreamController.broadcast();
+  final StreamController<SetupReadyForSlotResponse> setupReadyController =
+      StreamController.broadcast();
 
   /// ACK STREAM
 
-  final StreamController<AckResponse>
-  ackController =
-  StreamController.broadcast();
+  final StreamController<AckResponse> ackController =
+      StreamController.broadcast();
 
   /// MANIFEST STREAM
 
-  final StreamController<ManifestResponse>
-  manifestController =
-  StreamController.broadcast();
+  final StreamController<ManifestResponse> manifestController =
+      StreamController.broadcast();
+
+  /// SPICE DEFINITION STREAM
+  final StreamController<SpiceDefinitionResponse> spiceDefinitionController =
+      StreamController.broadcast();
 
   /// STATUS STREAM
 
-  final StreamController<StatusResponse>
-  statusController =
-  StreamController.broadcast();
+  final StreamController<StatusResponse> statusController =
+      StreamController.broadcast();
 
   /// ALERT STREAM
 
@@ -217,10 +216,12 @@ class ProtocolService {
             );
           }
 
-          else if (parsed
-          is ManifestResponse) {
-
+          else if (parsed is ManifestResponse) {
             manifestController.add(
+              parsed,
+            );
+          } else if (parsed is SpiceDefinitionResponse) {
+            spiceDefinitionController.add(
               parsed,
             );
           }
@@ -362,7 +363,7 @@ class ProtocolService {
     levelsController.close();
 
     manifestController.close();
-
+    spiceDefinitionController.close();
     setupReadyController.close();
   }
 }
