@@ -22,6 +22,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<SlotModel> slots = [];
   List<RecipeModel> recentRecipes = [];
 
+  List<SlotModel> get _nonSkippedSlots {
+    return slots.where((s) {
+      final name = s.spiceName.trim();
+      return name.isNotEmpty && !name.startsWith('Slot ');
+    }).toList();
+  }
+
   // Polling, live updates, and notification streams subscription hooks
   Timer? _pollingTimer;
   StreamSubscription? _slotsWatchSub;
@@ -778,7 +785,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
                     const SizedBox(height: 16),
 
                     // 4. Spice Containers Grid
-                    slots.isEmpty ? _buildEmptySlotsPlaceholder() : _buildSlotsGrid(),
+                    _nonSkippedSlots.isEmpty ? _buildEmptySlotsPlaceholder() : _buildSlotsGrid(),
 
                     const SizedBox(height: 32),
 
@@ -912,12 +919,13 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   Widget _buildSlotsGrid() {
+    final displayedSlots = _nonSkippedSlots;
     return SizedBox(
       height: 240,
       child: GridView.builder(
         scrollDirection: Axis.horizontal,
         physics: const BouncingScrollPhysics(),
-        itemCount: slots.length,
+        itemCount: displayedSlots.length,
         gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
           crossAxisCount: 2,
           crossAxisSpacing: 12,
@@ -925,7 +933,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           childAspectRatio: 0.66,
         ),
         itemBuilder: (context, index) {
-          final slot = slots[index];
+          final slot = displayedSlots[index];
           final isLow = slot.level <= 20;
 
           return Container(
@@ -1116,7 +1124,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _showManualDispenseDialog() {
-    final nonUnconfiguredSlots = slots.where((s) => s.spiceName.trim().isNotEmpty).toList();
+    final nonUnconfiguredSlots = slots.where((s) => s.spiceName.trim().isNotEmpty && !s.spiceName.startsWith('Slot ')).toList();
 
     if (nonUnconfiguredSlots.isEmpty) {
       showDialog(
