@@ -20,7 +20,6 @@ class SpiceSyncService {
 
     sub = bleService.protocol.spiceDefinitionController.stream.listen((response) {
       if (completer.isCompleted) {
-        sub.cancel();
         return;
       }
 
@@ -28,7 +27,6 @@ class SpiceSyncService {
         totalSpices = response.total;
         if (totalSpices == 0) {
           completer.complete(definitions);
-          sub.cancel();
         }
       } else if (response.type == ProtocolConstants.spiceDefinitionItem) {
         if (response.item != null) {
@@ -36,23 +34,23 @@ class SpiceSyncService {
         }
         if (totalSpices != null && definitions.length >= totalSpices!) {
           completer.complete(definitions);
-          sub.cancel();
         }
       } else if (response.type == ProtocolConstants.spiceDefinitionsEnd) {
         if (!completer.isCompleted) {
           completer.complete(definitions);
         }
-        sub.cancel();
       }
     });
 
-    await bleService.writeCommand(
-      command: GetSpiceDefinitionsCommand().toJson(),
-    );
+    try {
+      await bleService.writeCommand(
+        command: GetSpiceDefinitionsCommand().toJson(),
+      );
 
-    // Let the timeout throw a TimeoutException, which is a proper way to handle it.
-    // The cubit will catch it and can show a proper error.
-    return completer.future.timeout(const Duration(seconds: 30));
+      return await completer.future.timeout(const Duration(seconds: 15));
+    } finally {
+      await sub.cancel();
+    }
   }
 
   Future<AckResponse> addNewSpiceDefinition(SpiceDefinition definition) {

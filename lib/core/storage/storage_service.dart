@@ -2,6 +2,7 @@ import 'package:hive_flutter/hive_flutter.dart';
 
 import '../../features/bluetooth/data/models/last_connected_machine_model.dart';
 import '../../features/container_management/data/models/slot_model.dart';
+import '../../features/container_management/data/models/spice_definition_model.dart';
 
 import '../services/hash_service.dart';
 import 'storage_keys.dart';
@@ -186,6 +187,22 @@ class StorageService {
       StorageKeys.lowLevelThreshold,
       defaultValue: 20,
     ) as int;
+  }
+
+  /// SPICE DEFINITIONS CACHED LIST
+
+  static Future<void> saveSpiceDefinitions(List<SpiceDefinition> definitions) async {
+    final list = definitions.map((d) => d.toJson()).toList();
+    await userBox.put(StorageKeys.spiceDefinitions, list);
+  }
+
+  static List<SpiceDefinition> getSpiceDefinitions() {
+    final list = userBox.get(StorageKeys.spiceDefinitions) as List<dynamic>?;
+    if (list == null) return [];
+    return list.map((json) {
+      final map = Map<String, dynamic>.from(json as Map);
+      return SpiceDefinition.fromJson(map);
+    }).toList();
   }
 
   /// MACHINE INITIALIZED

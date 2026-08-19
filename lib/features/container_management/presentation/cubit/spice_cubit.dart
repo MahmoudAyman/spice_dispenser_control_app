@@ -1,5 +1,6 @@
 import 'package:flutter_bloc/flutter_bloc.dart';
 
+import '../../../../core/storage/storage_service.dart';
 import '../../../sync/services/spice_sync_service.dart';
 import '../../data/models/spice_definition_model.dart';
 import 'spice_state.dart';
@@ -10,21 +11,38 @@ class SpiceCubit extends Cubit<SpiceState> {
 
   SpiceCubit(this._spiceSyncService) : super(SpiceInitial());
 
-  Future<void> fetchSpices() async {
+  Future<void> fetchSpices({bool forceRefresh = false}) async {
     if (state is SpiceLoading) return;
 
-    if (_spices != null && _spices!.isNotEmpty) {
+    // 1. Try to load from memory first
+    if (!forceRefresh && _spices != null && _spices!.isNotEmpty) {
       emit(SpiceLoaded(_spices!));
       return;
     }
 
+    // 2. Try to load from local storage
+    final cached = StorageService.getSpiceDefinitions();
+    if (!forceRefresh && cached.isNotEmpty) {
+      _spices = cached;
+      emit(SpiceLoaded(cached));
+      return;
+    }
+
+    // 3. Fetch from BLE and update storage
     try {
       emit(SpiceLoading());
       final spices = await _spiceSyncService.fetchSpiceDefinitions();
       _spices = spices;
+      await StorageService.saveSpiceDefinitions(spices);
       emit(SpiceLoaded(spices));
     } catch (e) {
-      emit(SpiceError('Failed to fetch spices: $e'));
+      // If we have some cached data, fall back to cached instead of showing error
+      if (cached.isNotEmpty) {
+        _spices = cached;
+        emit(SpiceLoaded(cached));
+      } else {
+        emit(SpiceError('Failed to fetch spices: $e'));
+      }
     }
   }
 

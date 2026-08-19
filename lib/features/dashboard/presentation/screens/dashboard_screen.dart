@@ -101,11 +101,6 @@ class _DashboardScreenState extends State<DashboardScreen> {
   void _startPeriodicPolling() {
     // Poll levels immediately on loading
     _requestLevels();
-
-    // Setup periodic polling timer (Poll machine LittleFS capacity updates every 10 seconds)
-    _pollingTimer = Timer.periodic(const Duration(seconds: 10), (timer) {
-      _requestLevels();
-    });
   }
 
   void _requestLevels() {

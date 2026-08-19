@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_bloc/flutter_bloc.dart';
 
 import '../../../../core/services/ble_service.dart';
+import '../../../../core/storage/storage_service.dart';
 import '../../../container_management/data/models/slot_model.dart';
 import '../../../sync/services/slot_storage_service.dart';
 import '../../../sync/services/slot_sync_service.dart';
@@ -178,15 +179,30 @@ class _ContainerManagementViewState extends State<_ContainerManagementView> {
 
   Widget _buildSummaryRow(List<SlotModel> slots) {
     final int total = slots.length;
-    final int filled = slots.where((s) => s.spiceName.isNotEmpty).length;
-    final int lowCount = slots.where((s) => s.level < 25 && s.spiceName.isNotEmpty).length;
-    final int expiredCount = slots.where((s) => s.isExpired).length;
+    
+    final int configured = slots.where((s) {
+      final name = s.spiceName.trim();
+      return name.isNotEmpty && !name.startsWith('Slot ');
+    }).length;
+
+    final int lowThreshold = StorageService.getLowLevelThreshold();
+    final int lowCount = slots.where((s) {
+      final name = s.spiceName.trim();
+      final isSkipped = name.isEmpty || name.startsWith('Slot ');
+      return !isSkipped && s.level <= lowThreshold;
+    }).length;
+
+    final int expiredCount = slots.where((s) {
+      final name = s.spiceName.trim();
+      final isSkipped = name.isEmpty || name.startsWith('Slot ');
+      return !isSkipped && s.isExpired;
+    }).length;
 
     return Padding(
       padding: const EdgeInsets.only(bottom: 4),
       child: Row(
         children: [
-          _SummaryChip(label: '$filled/$total Filled', icon: Icons.kitchen, color: const Color(0xFF2563EB)),
+          _SummaryChip(label: '$configured/$total Configured', icon: Icons.kitchen, color: const Color(0xFF2563EB)),
           const SizedBox(width: 8),
           if (lowCount > 0)
             _SummaryChip(label: '$lowCount Low', icon: Icons.warning_amber_rounded, color: Colors.orange.shade600),

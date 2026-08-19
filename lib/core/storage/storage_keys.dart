@@ -36,6 +36,9 @@ class StorageKeys {
   static const String savedSlots =
       'saved_slots';
 
+  static const String spiceDefinitions =
+      'spice_definitions';
+
   /// Machine
 
   static const String machineBox =

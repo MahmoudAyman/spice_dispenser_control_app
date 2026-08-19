@@ -9,15 +9,15 @@ class SpiceDefinition {
 
   factory SpiceDefinition.fromJson(Map<String, dynamic> json) {
     return SpiceDefinition(
-      name: json['n'] as String,
-      density: (json['d'] as num).toDouble(),
+      name: (json['n'] ?? json['name'] ?? '') as String,
+      density: ((json['d'] ?? json['density'] ?? 0.0) as num).toDouble(),
     );
   }
 
   Map<String, dynamic> toJson() {
     return {
-      'name': name,
-      'density': density,
+      'n': name,
+      'd': density,
     };
   }
 }
